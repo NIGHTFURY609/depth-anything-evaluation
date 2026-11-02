@@ -1,0 +1,21 @@
+# Data, weights and generated artefacts
+*.zip
+data/
+cache/
+checkpoints/
+runs/
+*.pt
+*.safetensors
+*.npz
+
+# Draft research plans (not for the public repo)
+*Research Plan*
+
+# Local agent workspace
+.superpowers/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/

@@ -1,0 +1,41 @@
+# Single source of truth for paths, models and thresholds.
+paths:
+  data_root: ~/da3ft-data/rellis
+  cache_root: ~/da3ft-data/cache
+  results_root: results
+
+upstream:
+  da3_commit: 3d835ec1a5802d64a8b8b15f817a1ab54809bfe4
+
+models:
+  da3_small: depth-anything/DA3-SMALL
+  da3_base: depth-anything/DA3-BASE
+  da2_small: depth-anything/Depth-Anything-V2-Small-hf
+  da2_base: depth-anything/Depth-Anything-V2-Base-hf
+
+# upper_bound_resize turns 1920x1200 into 504x315, and the tie at 315 rounds up to 322.
+input:
+  width: 504
+  height: 322
+  process_res: 504
+  method: upper_bound_resize
+
+seed: 0
+
+lora:
+  rank: 8
+  target_regex: '.*blocks\.\d+\.attn\.(qkv|proj)'
+
+phase0:
+  batch_sizes: [2, 4]
+  modes: [head, lora, full]
+  latency_warmup: 5
+  latency_runs: 30
+
+rellis:
+  expected_images:
+    "00000": 2847
+    "00001": 2319
+    "00002": 4147
+    "00003": 2184
+    "00004": 2059
