@@ -1,0 +1,11 @@
+model,kind,mode,batch,checkpointing,has_conf,out_h,out_w,peak_alloc_mb,peak_reserved_mb,free_before_mb,latency_ms_median,status
+depth-anything/DA3-SMALL,inference,-,1,False,True,322,504,285,348,7096,24.9,ok
+depth-anything/DA3-BASE,inference,-,1,False,True,322,504,896,1088,7042,43.2,ok
+depth-anything/Depth-Anything-V2-Small-hf,inference,-,1,False,False,322,504,227,272,7040,11.2,ok
+depth-anything/Depth-Anything-V2-Base-hf,inference,-,1,False,False,322,504,714,786,7040,19.5,ok
+depth-anything/DA3-SMALL,train,head,2,False,True,322,504,694,802,7038,57.0,ok
+depth-anything/DA3-SMALL,train,head,4,False,True,322,504,1214,1394,7036,85.1,ok
+depth-anything/DA3-SMALL,train,lora,2,False,True,322,504,1033,1118,7034,71.4,ok
+depth-anything/DA3-SMALL,train,lora,4,False,True,322,504,1844,2034,7006,117.4,ok
+depth-anything/DA3-SMALL,train,full,2,False,True,322,504,1308,1386,7006,80.3,ok
+depth-anything/DA3-SMALL,train,full,4,False,True,322,504,2221,2328,7006,124.7,ok

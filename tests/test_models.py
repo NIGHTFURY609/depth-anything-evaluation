@@ -138,6 +138,17 @@ def test_every_trainable_param_gets_grad(net, mode):
     assert missing == []
 
 
+def test_no_frozen_head_param_is_used_for_depth(net):
+    net.requires_grad_(False)
+    net.head.requires_grad_(True)
+    backward_once(net)
+    used = {n for n, p in net.head.named_parameters() if p.grad is not None}
+    net.zero_grad(set_to_none=True)
+    set_trainable(net, "head")
+    trainable = {n for n, p in net.head.named_parameters() if p.requires_grad}
+    assert used == trainable
+
+
 @pytest.mark.parametrize("mode", ["head", "lora", "full"])
 def test_camera_modules_stay_frozen(net, mode):
     set_trainable(net, mode)

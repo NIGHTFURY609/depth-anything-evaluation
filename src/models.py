@@ -43,11 +43,6 @@ def forward_da3(net: DepthAnything3Net, x: torch.Tensor) -> dict[str, torch.Tens
     return {"depth": out.depth[:, 0], "conf": out.depth_conf[:, 0]}
 
 
-def _head_param_is_used(name: str) -> bool:
-    """The ray branch (*_aux) is never used for depth, and upstream no longer calls output_conv1."""
-    return "_aux" not in name and "output_conv1" not in name
-
-
 def set_trainable(
     net: DepthAnything3Net,
     mode: Literal["head", "lora", "full"],
@@ -58,8 +53,9 @@ def set_trainable(
         raise ValueError(f"Unknown fine-tuning mode: {mode}")
 
     net.requires_grad_(False)
+    # The ray branch (*_aux) runs but plays no part in depth, so it never gets gradients.
     for name, param in net.head.named_parameters():
-        param.requires_grad_(_head_param_is_used(name))
+        param.requires_grad_("_aux" not in name)
 
     if mode == "lora":
         config = LoraConfig(r=lora_rank, lora_alpha=lora_rank, target_modules=target_regex)
