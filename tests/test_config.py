@@ -17,6 +17,15 @@ def test_config_expands_home_in_paths():
     assert cfg["paths"]["data_root"].startswith(os.path.expanduser("~"))
 
 
+def test_split_is_by_whole_sequence_and_covers_all():
+    cfg = load_config()
+    split = cfg["split"]
+    train, val, test = set(split["train"]), {split["val"]}, {split["test"]}
+    assert not (train & val or train & test or val & test)
+    assert train | val | test == set(cfg["gt"]["sequences"])
+    assert len(train) == 3
+
+
 def test_set_seed_repeatable():
     set_seed(123)
     first = torch.rand(4)

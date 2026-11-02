@@ -70,6 +70,64 @@ New related work worth reading and citing, IDs to be checked first:
 
 Disk: `Rellis-3D/` is 45 GB and `raw/` 15 GB, more than the plan's 26 GB estimate because the scans unzip larger. N: has 57.7 GB free, close to the plan's 50 GB margin. The raw scan zip can be removed for space, which WSL can then reuse for caches.
 
+## 2026-11-02: Phase 1 projection facts
+
+From RELLIS-3D `utils/lidar2img.ipynb`, the official example:
+
+- `transforms.yaml` stores camera->LiDAR and must be inverted. Controls agree: median label agreement is 0.78-0.91 with the inverse and 0.09-0.28 without it (`results/phase1_controls.csv`).
+- Distortion is `[-0.134313, -0.025905, 0.002181, 0.00084, 0]`, found only in that notebook, not in `camera_info.txt`.
+- The example pairs `frame000104` with `000104.bin`, which supports matching by frame number. Taking the scan from 1 s later lowers agreement in every sequence (0.72-0.83).
+- Extrinsics differ per sequence: 00000, 00001 and 00003 share one file; 00002 and 00004 each have their own.
+
+Our own choices:
+
+- Pixels scale through the half-pixel offset, `(u + 0.5) * s - 0.5`, not by scaling K alone.
+- Points beyond 1.2x the image's half-FOV are dropped before distortion, because the polynomial can fold them back into the image.
+- The occlusion filter checks the pixel's row and the rows above it, so distant ground is not treated as occluded. It keeps 94.5-98.2% of points per sequence (medians).
+
+The ontology has no gravel class, so the ground group is dirt, mud, asphalt and concrete.
+
+## 2026-11-02: split
+
+The official RELLIS splits mix frames of 00000-00002 across train, val and test, so they are not used.
+
+- **Test: 00002**, the most grass and vegetation pixels (18.6M grass, 9.6M trees/bushes), per the plan's rule.
+- **Val: 00001.** The plan gives no rule, so we take the sequence whose grass and tree/bush fractions are closest (L1) to the test sequence's: 00001 is 0.116 away, 00000 is 0.137.
+- **Train: 00000, 00003, 00004** (7,090 frames).
+
+Counts are in `results/phase1_class_counts.csv`. No model accuracy for 00002 was viewed when choosing. All sequences come from one site, so "unseen place" is not established and should be stated as unseen sequences.
+
+## 2026-11-02: OPEN, calibration offset
+
+LiDAR points project slightly too high in the image, and this is unresolved. Phase 2 and 3 should not start until it is decided.
+
+Evidence for a real offset:
+
+- A full-resolution crop (00001, frame 1545) shows the top ring floating 12-15 source px above a barrier, about 3-4 px at 322. At that range this suggests a rotation error near 0.3 degrees rather than parallax.
+- Shifting labels: the best dy is +5 to +6 in every sequence, at the search limit of 6 (`results/phase1_shift.csv`).
+- Barriers peak at dy +2 to +6 and vehicles near +3. Barrier precision rises from 0.70 to 0.88 at dy +6, dx +2 in 00001.
+- Non-ground points against zero-shot DA3 give dy +2, +6, +6, +8 for 00000, 00001, 00003, 00004.
+
+Why the size is not settled:
+
+- 00001 and 00003 share an extrinsics file yet barriers give +6 and +2, so label bias or per-frame effects are mixed in.
+- Label agreement is biased by the scene's layering, and DA3 against all points is biased by its ground slope (it flips to dy -3 to -10).
+- LiDAR depth edges against image edges gave no usable peak.
+- 00002 may also have a horizontal offset (dx +10 to +12 against DA3, at the search limit; barriers say dx 0). Only the location of its optimum was printed, no error values.
+
+Why it matters: on ground at 20 m, 4 px is about a 9% depth error, comparable to the effect the paper measures, and fine-tuning would learn it.
+
+## 2026-11-02: grass and bush labels disagree
+
+LiDAR point labels and image annotations disagree most on grass versus bush, the boundary the terrain breakdown relies on. Where LiDAR says grass, the image annotation agrees 75-93% of the time and says bush 4-14% of the time, depending on sequence. Some stretches are extreme: in 00002, frames 1215-1277 score below 0.3, with one field labelled grass in LiDAR and bush in the image, though the geometry looks right.
+
+Decisions:
+
+- Keep LiDAR labels as primary, since they cover every valid pixel.
+- Also report a merged vegetation group (grass + trees/bushes), which this disagreement cannot affect.
+- On annotated frames, report the terrain breakdown under both label sources as a sensitivity check.
+- No frames were dropped for label disagreement: it says nothing about the depth values. The plan's rule drops only visibly misaligned frames, and none of the overlays viewed so far qualified on their own beyond the offset above.
+
 ## Deferred to later phases
 
 - Phase 3: the distillation L1 on median-normalised linear depth is likely to be dominated by far and sky pixels, as DA3-Small has no sky clamp. Log-space is the probable fix. Check on validation.

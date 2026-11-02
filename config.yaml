@@ -32,6 +32,24 @@ phase0:
   latency_warmup: 5
   latency_runs: 30
 
+# Fixed before any training; see DECISIONS.md for the rule.
+split:
+  train: ["00000", "00003", "00004"]
+  val: "00001"
+  test: "00002"
+  eval_stride: 5
+
+gt:
+  sequences: ["00000", "00001", "00002", "00003", "00004"]
+  # Only in RELLIS-3D's utils/lidar2img.ipynb; camera_info.txt has no distortion terms.
+  distortion: [-0.134313, -0.025905, 0.002181, 0.00084, 0.0]
+  source_size: [1920, 1200]
+  occlusion:
+    radius_x: 4
+    radius_y: 4
+    rel_threshold: 0.2
+    abs_threshold: 0.5
+
 rellis:
   expected_images:
     "00000": 2847

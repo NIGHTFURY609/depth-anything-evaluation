@@ -8,6 +8,9 @@ runs/
 *.safetensors
 *.npz
 
+# Derived from RELLIS images (CC BY-NC-SA)
+results/overlays/
+
 # Draft research plans (not for the public repo)
 *Research Plan*
 
