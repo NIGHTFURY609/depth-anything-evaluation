@@ -10,23 +10,50 @@ PY="${PY:-$HOME/envs/da3ft/bin/python}"
 WHICH="${1:-all}"
 failed=0
 
+if [ ! -x "$PY" ]; then
+  echo "could not check downloads: no Python at $PY (run scripts/setup_wsl.sh first)"
+  exit 2
+fi
+
+# Prints nothing; returns 0 if valid, 1 if invalid. Only the checker's own "invalid" code (3)
+# may lead to a delete: a broken environment must never remove a good 15 GB download.
+is_valid() {
+  local rc=0
+  "$PY" "$SCRIPT_DIR/verify_rellis.py" --check-download "$1" || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    3) return 1 ;;
+    *)
+      echo "could not check $1: checker exited with $rc, keeping the file"
+      exit 2
+      ;;
+  esac
+}
+
+first_file() {
+  find "$1" -maxdepth 1 -type f ! -name '*.part' ! -name '*.tmp' | head -n 1
+}
+
 fetch() {
   local name="$1" id="$2" dir="$RAW/$1" existing
   mkdir -p "$dir"
-  existing="$(find "$dir" -maxdepth 1 -type f ! -name '*.part' ! -name '*.tmp' | head -n 1)"
-  if [ -n "$existing" ] && "$PY" "$SCRIPT_DIR/verify_rellis.py" --check-download "$existing"; then
-    echo "skip  $name (already valid)"
+  existing="$(first_file "$dir")"
+  if [ -n "$existing" ]; then
+    if is_valid "$existing"; then
+      echo "skip  $name (already valid)"
+      return
+    fi
+    rm -f "$existing"
+  fi
+  echo "fetch $name"
+  "$PY" -m gdown --continue "https://drive.google.com/uc?id=$id" -O "$dir/"
+  existing="$(first_file "$dir")"
+  if [ -n "$existing" ] && is_valid "$existing"; then
     return
   fi
   [ -n "$existing" ] && rm -f "$existing"
-  echo "fetch $name"
-  "$PY" -m gdown --continue "https://drive.google.com/uc?id=$id" -O "$dir/"
-  existing="$(find "$dir" -maxdepth 1 -type f ! -name '*.part' ! -name '*.tmp' | head -n 1)"
-  if [ -z "$existing" ] || ! "$PY" "$SCRIPT_DIR/verify_rellis.py" --check-download "$existing"; then
-    [ -n "$existing" ] && rm -f "$existing"
-    echo "FAILED $name: download by browser into $dir/ from https://drive.google.com/file/d/$id/view"
-    failed=1
-  fi
+  echo "FAILED $name: download by browser into $dir/ from https://drive.google.com/file/d/$id/view"
+  failed=1
 }
 
 if [ "$WHICH" != "large" ]; then

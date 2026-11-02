@@ -32,18 +32,20 @@ From `results/phase0.csv`, at 504x322 with about 7.0 GB of VRAM free. Latencies 
 
 | Model | Inference peak (MB) | Median latency (ms) | Confidence |
 | --- | --- | --- | --- |
-| DA3-Small | 285 | 24.9 | Yes |
-| DA3-Base | 896 | 43.2 | Yes |
-| DA2-Small | 227 | 11.2 | No |
-| DA2-Base | 714 | 19.5 | No |
+| DA3-Small | 285 | 25.3 | Yes |
+| DA3-Base | 896 | 43.3 | Yes |
+| DA2-Small | 170 | 14.5 | No |
+| DA2-Base | 490 | 34.7 | No |
+
+Precision differs by design, so these latencies are not like-for-like. DA3 uses bf16 on the backbone and float32 on the head, as upstream does, and skips the camera decoder. DA2 runs entirely in float32, the official pipeline, because bf16 would quantise its disparity baselines by roughly 0.4%. Do not report this table as a speed comparison without saying so.
 
 DA3-Small training, one full optimiser step:
 
 | Mode | Batch 2 peak (MB) | Batch 4 peak (MB) | Batch 4 step (ms) |
 | --- | --- | --- | --- |
-| Head | 694 | 1214 | 85.1 |
-| LoRA | 1033 | 1844 | 117.4 |
-| Full | 1308 | 2221 | 124.7 |
+| Head | 694 | 1214 | 80.0 |
+| LoRA | 1033 | 1844 | 108.5 |
+| Full | 1308 | 2222 | 118.5 |
 
 Decisions:
 

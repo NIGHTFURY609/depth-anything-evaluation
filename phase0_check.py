@@ -68,9 +68,9 @@ def load_da3_runner(model_id: str):
 def load_da2_runner(model_id: str):
     model = AutoModelForDepthEstimation.from_pretrained(model_id).to(DEVICE).eval()
 
+    # float32, like the official pipeline: bf16 would quantise the disparity baselines.
     def run(x):
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            return model(pixel_values=x).predicted_depth, None
+        return model(pixel_values=x).predicted_depth, None
 
     return run
 

@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 FRAME_RE = re.compile(r"frame(\d+)-")
+INVALID_DOWNLOAD = 3  # Distinct from 1, which is also what a crashed interpreter returns.
 
 
 def is_valid_zip(path: Path) -> bool:
@@ -55,7 +56,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.check_download:
-        return 0 if is_valid_download(args.check_download) else 1
+        return 0 if is_valid_download(args.check_download) else INVALID_DOWNLOAD
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from src.config import load_config

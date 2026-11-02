@@ -48,6 +48,17 @@ def test_no_retry_when_step_fits(monkeypatch):
     assert len(phase0_check.measure_train_with_retry("any/model", "head", 2, load_config())) == 1
 
 
+@pytest.mark.gpu
+def test_da2_runs_in_full_precision():
+    """Baselines must match the official float32 pipeline, not a bf16-quantised one."""
+    cfg = load_config()
+    run = phase0_check.load_da2_runner(cfg["models"]["da2_small"])
+    with torch.no_grad():
+        depth, conf = run(phase0_check._sample_batch(1, cfg))
+    assert depth.dtype == torch.float32
+    assert conf is None
+
+
 def test_csv_columns(tmp_path):
     path = tmp_path / "phase0.csv"
     phase0_check.write_rows([{"model": "m", "status": "ok"}], path)

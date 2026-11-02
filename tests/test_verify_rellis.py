@@ -1,6 +1,11 @@
+import os
+import subprocess
+import zipfile
 from pathlib import Path
 
-from scripts.verify_rellis import check_sequences, is_valid_zip
+import pytest
+
+from scripts.verify_rellis import check_sequences, is_valid_zip, main
 
 
 def make_frame(root: Path, seq: str, frame: int, scan=True, label=True) -> None:
@@ -41,3 +46,53 @@ def test_html_quota_page_is_not_valid_zip(tmp_path):
     page = tmp_path / "scans.zip"
     page.write_text("<!DOCTYPE html><html>Google Drive quota exceeded</html>")
     assert is_valid_zip(page) is False
+
+
+def test_invalid_download_has_its_own_exit_code(tmp_path, monkeypatch):
+    page = tmp_path / "scans.zip"
+    page.write_text("<!DOCTYPE html><html>quota</html>")
+    monkeypatch.setattr("sys.argv", ["verify_rellis.py", "--check-download", str(page)])
+    assert main() == 3
+
+
+def run_download_with_fake_python(tmp_path: Path, exit_code: int):
+    """Runs the download script with a stand-in for Python that always exits with exit_code."""
+    fake_python = tmp_path / "fake_python"
+    fake_python.write_text(f"#!/bin/sh\nexit {exit_code}\n")
+    fake_python.chmod(0o755)
+    existing = tmp_path / "raw" / "ontology" / "ontology.zip"
+    existing.parent.mkdir(parents=True)
+    with zipfile.ZipFile(existing, "w") as z:
+        z.writestr("ontology.yaml", "ok")
+    env = {**os.environ, "RELLIS_RAW": str(tmp_path / "raw"), "PY": str(fake_python)}
+    result = subprocess.run(
+        ["bash", "scripts/download_rellis.sh", "small"], env=env, capture_output=True, text=True
+    )
+    return result, existing
+
+
+@pytest.mark.parametrize("crash_code", [1, 2, 127])
+def test_broken_checker_keeps_existing_download(tmp_path, crash_code):
+    result, existing = run_download_with_fake_python(tmp_path, crash_code)
+    assert existing.exists()
+    assert result.returncode != 0
+    assert "could not check" in result.stdout
+
+
+def test_missing_python_keeps_existing_download(tmp_path):
+    existing = tmp_path / "raw" / "ontology" / "ontology.zip"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"data")
+    env = {**os.environ, "RELLIS_RAW": str(tmp_path / "raw"), "PY": str(tmp_path / "nope")}
+    result = subprocess.run(
+        ["bash", "scripts/download_rellis.sh", "small"], env=env, capture_output=True, text=True
+    )
+    assert existing.exists()
+    assert result.returncode != 0
+
+
+def test_invalid_download_is_still_deleted(tmp_path):
+    result, existing = run_download_with_fake_python(tmp_path, 3)
+    assert not existing.exists()
+    assert "FAILED ontology" in result.stdout
+    assert "drive.google.com/file/d/" in result.stdout
