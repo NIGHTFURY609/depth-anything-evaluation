@@ -15,7 +15,7 @@ Dated log of every choice made before seeing test results.
 3. **"Loss falls to near zero" cannot be the overfit check.** The loss is unbounded below as e goes to 0. Judge the overfit check on AbsRel.
 4. **`lambda_c` limits what confidence can rank.** `depth_conf` is `exp(x)+1`, so c >= 1 (`test_conf_floor`). The optimum is c = max(1, lambda_c/e), so pixels with relative error above `lambda_c` all sit at the floor. `lambda_c` must stay above the 0.25 high-error threshold. Check the confidence histogram on validation.
 5. **DA3's ViT has no gradient checkpointing.** `enable_checkpointing` adds it, though the Phase 0 numbers show it is not needed.
-6. **Terrain labels come from LiDAR points first.** Image annotations cover 6,235 of 13,556 frames, so every-5th-frame evaluation would often have no 2D labels. The separate Ouster label download (174 MB per the README) labels every valid GT pixel. Phase 1 cross-checks them against the image annotations where both exist.
+6. **Terrain labels come from LiDAR points first.** Image annotations cover 6,234 of 13,556 frames (1200, 1161, 2074, 900, 899 across 00000-00004; earlier notes said 6,235, and 6,236 annotation files exist on disk, the extras unmatched and not looked into), so every-5th-frame evaluation would often have no 2D labels. The separate Ouster label download (174 MB per the README) labels every valid GT pixel. Phase 1 cross-checks them against the image annotations where both exist.
 7. **uv, not conda**, as conda is absent from WSL.
 
 ## 2026-11-02: traps in the DA3 source
@@ -78,6 +78,7 @@ From RELLIS-3D `utils/lidar2img.ipynb`, the official example:
 - Distortion is `[-0.134313, -0.025905, 0.002181, 0.00084, 0]`, found only in that notebook, not in `camera_info.txt`.
 - The example pairs `frame000104` with `000104.bin`, which supports matching by frame number. Taking the scan from 1 s later lowers agreement in every sequence (0.72-0.83).
 - Extrinsics differ per sequence: 00000, 00001 and 00003 share one file; 00002 and 00004 each have their own.
+- Label agreement cannot distinguish distortion on from off (for example 0.7753 against 0.7752 in 00000). The official values are used because the official example uses them, not because this control confirmed them.
 
 Our own choices:
 
@@ -111,15 +112,16 @@ The author chose to attempt a refinement, with the official calibration as the f
 | 00003 | train | -2.9 | +2.5 | -0.7 to 4.3 | 0.755 to 0.760 | unstable |
 | 00004 | train | +4.6 | +1.3 | -0.7 to 1.7 | 0.912 to 0.926 | unstable |
 
-The fit uses labels of sharply bounded classes and no depth model, so it cannot favour any model being compared. The acceptance rule was fixed in `config.yaml` before fitting: 95% interval no wider than 3 px on both axes, held-out gain, at least 2,000 points (`results/phase1_refine.csv`).
+The fit uses labels of sharply bounded classes (pole, vehicle, fence, concrete, barrier) and no depth model, so it cannot favour any model being compared. Person is excluded because its labels barely overlap between sources. The acceptance rule was fixed in `config.yaml` before fitting: 95% interval no wider than 3 px on both axes, held-out gain, at least 2,000 points (`results/phase1_refine.csv`). The estimate is the centre of the 98% plateau of label precision, and the interval comes from a 300-resample bootstrap over blocks of 50 frames, because neighbouring frames are not independent.
 
 - Thresholds were not loosened after seeing these results.
+- The 00000 acceptance is the weaker of the two: 19,163 points, with precision only 0.277 to 0.356.
 - Applying only the two accepted corrections would leave training partly corrected and the test sequence not, which is worse than a consistent offset.
 - 00003 shares an extrinsics file with 00000 and 00001 but gives a different estimate, so a constant rotation per file does not explain the offset. Per-frame effects such as robot pitch or sync are possible; not investigated.
 - `results/calibration_estimates.yaml` holds all five point estimates, accepted or not, and `cache/gt_sensitivity` is built from them. That cache exists only to show how much the results depend on calibration. Training uses the official one.
 - For 00001, a side-by-side crop confirms the correction: the top ring floats above the barriers with the official calibration and lands on them when corrected.
 
-Evidence for a real offset:
+Evidence for a real offset (one-off scripts in `scripts/diagnostics/`, saved output in `results/diagnostics/`; clean up and re-verify them before the paper cites these numbers):
 
 - A full-resolution crop (00001, frame 1545) shows the top ring floating 12-15 source px above a barrier, about 3-4 px at 322. At that range this suggests a rotation error near 0.3 degrees rather than parallax.
 - Shifting labels: the best dy is +5 to +6 in every sequence, at the search limit of 6 (`results/phase1_shift.csv`).
@@ -137,7 +139,7 @@ Why it matters: on ground at 20 m, 4 px is about a 9% depth error, comparable to
 
 ## 2026-11-02: grass and bush labels disagree
 
-LiDAR point labels and image annotations disagree most on grass versus bush, the boundary the terrain breakdown relies on. Where LiDAR says grass, the image annotation agrees 75-93% of the time and says bush 4-14% of the time, depending on sequence. Some stretches are extreme: in 00002, frames 1215-1277 score below 0.3, with one field labelled grass in LiDAR and bush in the image, though the geometry looks right.
+LiDAR point labels and image annotations disagree most on grass versus bush, the boundary the terrain breakdown relies on. Where LiDAR says grass, the image annotation agrees 75-93% of the time and says bush 4-14% of the time, depending on sequence. Some stretches are extreme: in 00002, frames 1215-1277 score below 0.3, with one field labelled grass in LiDAR and bush in the image, though the geometry looks right. That cause was confirmed on frames 1255 and 1265. Frames also below 0.3 but not inspected: 00002 frames 102-108 and 1327-1345, and 00001 frame 896.
 
 Decisions:
 
@@ -146,8 +148,22 @@ Decisions:
 - On annotated frames, report the terrain breakdown under both label sources as a sensitivity check.
 - No frames were dropped for label disagreement: it says nothing about the depth values. The plan's rule drops only visibly misaligned frames, and none of the overlays viewed so far qualified on their own beyond the offset above.
 
+## 2026-11-02: Phase 1 gate outcome
+
+The plan's gate is that overlays line up with trunks and ground on several frames from every sequence. **Passed for gross geometry, not passed for a few pixels of vertical alignment**, which is the offset above. The author accepted proceeding on that basis by choosing official calibration with disclosure as the fallback. What was viewed is listed in [PROGRESS.md](PROGRESS.md).
+
+## 2026-11-02: working rules
+
+- Never touch WSL distro `Ubuntu-26.04` or change `.wslconfig`.
+- Never commit RELLIS data or weights. Overlays are derived from RELLIS images, so they are git-ignored too.
+- Fix thresholds before viewing test results. Log anything seen from test sequence 00002 in [PROGRESS.md](PROGRESS.md).
+- Commit as work completes; do not push without being asked.
+- Each phase ends with a results review before the next starts.
+- Record every decision here and all progress in [PROGRESS.md](PROGRESS.md) as the work happens. Save one-off scripts and their output in the repo if a decision relies on them.
+
 ## Deferred to later phases
 
 - Phase 3: the distillation L1 on median-normalised linear depth is likely to be dominated by far and sky pixels, as DA3-Small has no sky clamp. Log-space is the probable fix. Check on validation.
 - Phase 3: fine-tuning changes what confidence targets, from L1 on normalised depth to relative error. Say so when comparing confidence before and after.
 - Optional: whether DA3Mono-Large returns `conf`. Not checked, as the model is optional.
+- Code issues and other open items are listed in [PROGRESS.md](PROGRESS.md).

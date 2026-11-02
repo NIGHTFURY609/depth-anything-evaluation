@@ -1,0 +1,33 @@
+count    6234.000
+mean        0.825
+std         0.114
+min         0.035
+0.1%        0.059
+1%          0.449
+5%          0.626
+50%         0.843
+max         0.991
+frames with agreement<0.5: {'00000': 22, '00001': 2, '00002': 66}
+frames with points<3000: {'00001': 4, '00002': 4}
+       min   max
+seq             
+00000  843  1797
+00001  530   896
+00002  102  2535
+        seq  frame  agreement_all  agreement_kept  points
+2994  00002   1265         0.0348          0.0338    6702
+2989  00002   1255         0.0463          0.0463    6652
+2992  00002   1261         0.0481          0.0474    6780
+1434  00001    468         0.8357          0.8306     974
+1436  00001    472         0.7324          0.7275    1054
+00000 points min/1%/median: 4726.0 5334.0 7835.0 kept fraction median: 0.945
+00001 points min/1%/median: 3672.0 4545.0 5917.0 kept fraction median: 0.979
+00002 points min/1%/median: 1968.0 3754.0 7141.0 kept fraction median: 0.972
+00003 points min/1%/median: 4051.0 4403.0 5785.0 kept fraction median: 0.982
+00004 points min/1%/median: 4231.0 4524.0 5912.0 kept fraction median: 0.981
+frames with <2000 points: 1 [('00002', 893, 1968)]
+worst_00001_000468.jpg
+worst_00001_000472.jpg
+worst_00002_001255.jpg
+worst_00002_001261.jpg
+worst_00002_001265.jpg

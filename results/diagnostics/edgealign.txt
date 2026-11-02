@@ -1,0 +1,38 @@
+wrote 00001 1545
+wrote 00002 1382
+wrote 00003 1455
+00000 frames 356
+  col: n=356 best dx=-2 dy=-30 gain=1.024 | marginal best dx=-4 dy=-30
+  row: n=356 best dx=-28 dy=-30 gain=1.029 | marginal best dx=-26 dy=-30
+    split col: dx=-14 dy=-30
+    split col: dx=-2 dy=-30
+    split row: dx=-28 dy=-30
+    split row: dx=-22 dy=-30
+00001 frames 290
+  col: n=290 best dx=-18 dy=+28 gain=1.061 | marginal best dx=-2 dy=+30
+  row: n=290 best dx=-26 dy=-12 gain=1.040 | marginal best dx=-30 dy=-12
+    split col: dx=+8 dy=+30
+    split col: dx=-18 dy=+28
+    split row: dx=-26 dy=-12
+    split row: dx=+30 dy=+26
+00002 frames 519
+  col: n=519 best dx=+12 dy=+28 gain=1.024 | marginal best dx=-8 dy=+30
+  row: n=519 best dx=-28 dy=-30 gain=1.043 | marginal best dx=-14 dy=-30
+    split col: dx=+6 dy=+28
+    split col: dx=-4 dy=+24
+    split row: dx=-16 dy=-20
+    split row: dx=-18 dy=-30
+00003 frames 273
+  col: n=273 best dx=-6 dy=+30 gain=1.081 | marginal best dx=-8 dy=+30
+  row: n=273 best dx=-12 dy=-28 gain=1.029 | marginal best dx=-18 dy=-18
+    split col: dx=-4 dy=+30
+    split col: dx=-6 dy=+28
+    split row: dx=-12 dy=-18
+    split row: dx=-8 dy=-28
+00004 frames 258
+  col: n=258 best dx=-8 dy=+30 gain=1.073 | marginal best dx=-10 dy=+30
+  row: n=258 best dx=-16 dy=+30 gain=1.062 | marginal best dx=-26 dy=+30
+    split col: dx=-18 dy=+30
+    split col: dx=+2 dy=+30
+    split row: dx=-26 dy=+30
+    split row: dx=-14 dy=+30

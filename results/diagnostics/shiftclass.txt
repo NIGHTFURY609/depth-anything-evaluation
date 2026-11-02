@@ -1,0 +1,51 @@
+overall precision (LiDAR class points landing on same image class)
+  person    n=   99304 zero=0.111 best=0.122 dx=+0 dy=+8  dy-profile@dx0: 0.10 0.11 0.11 0.12 0.12 0.12 0.12
+  vehicle   n=     644 zero=0.269 best=0.424 dx=+2 dy=+5  dy-profile@dx0: 0.07 0.15 0.27 0.39 0.38 0.33 0.23
+  barrier   n=   89173 zero=0.784 best=0.825 dx=+1 dy=+5  dy-profile@dx0: 0.68 0.74 0.78 0.82 0.82 0.76 0.69
+  pole      n=     938 zero=0.171 best=0.188 dx=+0 dy=+3  dy-profile@dx0: 0.12 0.15 0.17 0.19 0.17 0.15 0.15
+  fence     n=    9864 zero=0.252 best=0.323 dx=+0 dy=+5  dy-profile@dx0: 0.20 0.23 0.25 0.28 0.32 0.27 0.26
+  building  n<200
+  object    n<200
+  log       n=   19820 zero=0.274 best=0.295 dx=-12 dy=+5  dy-profile@dx0: 0.20 0.24 0.27 0.29 0.29 0.27 0.22
+  rubble    n=   65383 zero=0.316 best=0.452 dx=-14 dy=+10  dy-profile@dx0: 0.20 0.25 0.32 0.37 0.41 0.43 0.42
+  tree      n= 1791508 zero=0.874 best=0.875 dx=+1 dy=-1  dy-profile@dx0: 0.87 0.87 0.87 0.87 0.86 0.85 0.83
+  bush      n= 4266785 zero=0.796 best=0.811 dx=+2 dy=+6  dy-profile@dx0: 0.76 0.78 0.80 0.81 0.81 0.80 0.79
+  grass     n=13069175 zero=0.850 best=0.888 dx=-4 dy=+14  dy-profile@dx0: 0.81 0.83 0.85 0.87 0.88 0.88 0.89
+  concrete  n=  207813 zero=0.865 best=0.901 dx=+7 dy=+4  dy-profile@dx0: 0.76 0.82 0.87 0.90 0.90 0.86 0.80
+  sky       n<200
+per sequence, compact classes only
+00000
+  person    n=   29690 zero=0.192 best=0.208 dx=-2 dy=+8  dy-profile@dx0: 0.17 0.18 0.19 0.20 0.20 0.20 0.20
+  vehicle   n<200
+  barrier   n<200
+  pole      n<200
+  fence     n=    9864 zero=0.252 best=0.323 dx=+0 dy=+5  dy-profile@dx0: 0.20 0.23 0.25 0.28 0.32 0.27 0.26
+  building  n<200
+00001
+  person    n=    1787 zero=0.135 best=0.144 dx=+0 dy=+14  dy-profile@dx0: 0.13 0.13 0.13 0.14 0.14 0.14 0.14
+  vehicle   n<200
+  barrier   n=   23167 zero=0.698 best=0.876 dx=+2 dy=+6  dy-profile@dx0: 0.51 0.62 0.70 0.81 0.86 0.77 0.67
+  pole      n<200
+  fence     n<200
+  building  n<200
+00002
+  person    n=   41332 zero=0.015 best=0.018 dx=+0 dy=+12  dy-profile@dx0: 0.01 0.01 0.01 0.02 0.02 0.02 0.02
+  vehicle   n<200
+  barrier   n=    3984 zero=0.576 best=0.751 dx=+0 dy=+5  dy-profile@dx0: 0.30 0.44 0.58 0.71 0.74 0.68 0.53
+  pole      n=     926 zero=0.171 best=0.186 dx=+0 dy=+3  dy-profile@dx0: 0.12 0.15 0.17 0.19 0.17 0.15 0.15
+  fence     n<200
+  building  n<200
+00003
+  person    n=   14947 zero=0.299 best=0.327 dx=+0 dy=+8  dy-profile@dx0: 0.27 0.28 0.30 0.31 0.32 0.33 0.32
+  vehicle   n=     584 zero=0.288 best=0.425 dx=+3 dy=+3  dy-profile@dx0: 0.08 0.17 0.29 0.40 0.36 0.29 0.20
+  barrier   n=   41371 zero=0.765 best=0.774 dx=-2 dy=+2  dy-profile@dx0: 0.71 0.74 0.76 0.77 0.75 0.71 0.66
+  pole      n<200
+  fence     n<200
+  building  n<200
+00004
+  person    n=   11548 zero=0.000 best=0.000 dx=-14 dy=-14  dy-profile@dx0: 0.00 0.00 0.00 0.00 0.00 0.00 0.00
+  vehicle   n<200
+  barrier   n=   20650 zero=0.958 best=0.972 dx=+5 dy=+2  dy-profile@dx0: 0.88 0.92 0.96 0.95 0.92 0.88 0.82
+  pole      n<200
+  fence     n<200
+  building  n<200
