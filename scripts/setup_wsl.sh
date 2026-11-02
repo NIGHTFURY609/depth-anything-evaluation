@@ -23,6 +23,7 @@ git -C "$DA3_DIR" fetch --quiet origin
 git -C "$DA3_DIR" checkout --quiet "$DA3_COMMIT"
 
 uv pip install -e "$DA3_DIR"
-uv pip install transformers peft gdown pytest tensorboard scikit-learn pandas matplotlib pyyaml tqdm
+# addict is imported by depth_anything_3.model.da3 but not declared upstream.
+uv pip install addict transformers peft gdown pytest tensorboard scikit-learn pandas matplotlib pyyaml tqdm
 
-"$ENV_DIR/bin/python" -c "import torch, depth_anything_3; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.is_bf16_supported())"
+"$ENV_DIR/bin/python" -c "import torch, depth_anything_3.api; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.is_bf16_supported())"
