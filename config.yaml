@@ -44,6 +44,16 @@ gt:
   # Only in RELLIS-3D's utils/lidar2img.ipynb; camera_info.txt has no distortion terms.
   distortion: [-0.134313, -0.025905, 0.002181, 0.00084, 0.0]
   source_size: [1920, 1200]
+  # Primary ground truth uses the official calibration; these estimates are for sensitivity only.
+  sensitivity_calibration: results/calibration_estimates.yaml
+  # Fixed before fitting. Person is excluded: its labels barely overlap between sources.
+  refinement:
+    classes: [5, 8, 18, 23, 27] # pole, vehicle, fence, concrete, barrier
+    radius: 14
+    block: 50
+    resamples: 300
+    max_ci_width: 3.0
+    min_points: 2000
   occlusion:
     radius_x: 4
     radius_y: 4

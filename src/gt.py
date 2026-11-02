@@ -5,7 +5,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import yaml
 
+from src.calib_refine import rotation_for_pixel_shift
 from src.projection import occlusion_mask, project_points, zbuffer
 from src.rellis import Frame, load_extrinsics, load_intrinsics, load_scan
 
@@ -17,14 +19,22 @@ class Calibration:
     dist: np.ndarray
 
 
-def load_calibration(cfg: dict, seq: str) -> Calibration:
-    """Extrinsics differ between sequences, so always load them per sequence."""
+def load_calibration(cfg: dict, seq: str, corrections=None) -> Calibration:
+    """Extrinsics differ between sequences, so always load them per sequence.
+
+    The official calibration is the primary ground truth. A corrections file applies per-sequence
+    pixel shifts as small rotations, for the sensitivity analysis (see DECISIONS.md).
+    """
     calib = Path(cfg["paths"]["data_root"]) / "calib"
-    return Calibration(
-        K=load_intrinsics(calib / "intrinsics/Rellis-3D" / seq / "camera_info.txt"),
-        T_cam_lidar=load_extrinsics(calib / "basler_to_ouster/Rellis_3D" / seq / "transforms.yaml"),
-        dist=np.array(cfg["gt"]["distortion"], dtype=np.float64),
-    )
+    K = load_intrinsics(calib / "intrinsics/Rellis-3D" / seq / "camera_info.txt")
+    T = load_extrinsics(calib / "basler_to_ouster/Rellis_3D" / seq / "transforms.yaml")
+    if corrections is not None:
+        with open(corrections) as f:
+            shift = yaml.safe_load(f)[seq]
+        target = (cfg["input"]["width"], cfg["input"]["height"])
+        source = tuple(cfg["gt"]["source_size"])
+        T = rotation_for_pixel_shift(shift["dx"], shift["dy"], K, source, target) @ T
+    return Calibration(K=K, T_cam_lidar=T, dist=np.array(cfg["gt"]["distortion"], dtype=np.float64))
 
 
 def build_frame(frame: Frame, calib: Calibration, cfg: dict) -> dict[str, np.ndarray]:
@@ -48,12 +58,12 @@ def build_frame(frame: Frame, calib: Calibration, cfg: dict) -> dict[str, np.nda
     return gt
 
 
-def frame_path(cache_root, seq: str, frame: int) -> Path:
-    return Path(cache_root) / "gt" / seq / f"{frame:06d}.npz"
+def frame_path(cache_root, seq: str, frame: int, subdir: str = "gt") -> Path:
+    return Path(cache_root) / subdir / seq / f"{frame:06d}.npz"
 
 
-def save_frame(gt: dict[str, np.ndarray], frame: Frame, cache_root) -> Path:
-    path = frame_path(cache_root, frame.seq, frame.frame)
+def save_frame(gt: dict[str, np.ndarray], frame: Frame, cache_root, subdir: str = "gt") -> Path:
+    path = frame_path(cache_root, frame.seq, frame.frame, subdir)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path, **gt)
     return path

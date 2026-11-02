@@ -74,6 +74,13 @@ def test_save_frame_round_trips(tmp_path):
         assert saved["keep"].dtype == bool
 
 
+def test_save_frame_can_use_a_separate_cache(tmp_path):
+    frame = make_frame(tmp_path, [[0, 0, 10, 0.5]], [3])
+    gt = build_frame(frame, CALIB, CFG)
+    path = save_frame(gt, frame, tmp_path / "cache", subdir="gt_sensitivity")
+    assert path == tmp_path / "cache" / "gt_sensitivity" / "00000" / "000001.npz"
+
+
 def test_load_calibration_uses_the_sequence_files(tmp_path):
     for seq, tz in (("00000", 1), ("00002", 2)):
         intr = tmp_path / "calib/intrinsics/Rellis-3D" / seq

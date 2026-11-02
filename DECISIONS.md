@@ -97,9 +97,27 @@ The official RELLIS splits mix frames of 00000-00002 across train, val and test,
 
 Counts are in `results/phase1_class_counts.csv`. No model accuracy for 00002 was viewed when choosing. All sequences come from one site, so "unseen place" is not established and should be stated as unseen sequences.
 
-## 2026-11-02: OPEN, calibration offset
+## 2026-11-02: calibration offset
 
-LiDAR points project slightly too high in the image, and this is unresolved. Phase 2 and 3 should not start until it is decided.
+LiDAR points project slightly too high in the image. **Decision: the official calibration stays the primary ground truth, the offset is disclosed in the paper, and every Phase 2 and 4 result is also reported against `cache/gt_sensitivity`.**
+
+The author chose to attempt a refinement, with the official calibration as the fallback if it did not converge cleanly. It did not:
+
+| Sequence | Role | dx | dy | dy 95% CI | Held-out precision (official to corrected) | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| 00000 | train | -0.5 | +5.0 | 4.3 to 6.6 | 0.277 to 0.356 | accepted |
+| 00001 | val | +2.5 | +6.0 | 5.5 to 6.5 | 0.791 to 0.911 | accepted |
+| 00002 | test | +0.9 | +4.4 | 1.0 to 7.3 | 0.876 to 0.907 | unstable |
+| 00003 | train | -2.9 | +2.5 | -0.7 to 4.3 | 0.755 to 0.760 | unstable |
+| 00004 | train | +4.6 | +1.3 | -0.7 to 1.7 | 0.912 to 0.926 | unstable |
+
+The fit uses labels of sharply bounded classes and no depth model, so it cannot favour any model being compared. The acceptance rule was fixed in `config.yaml` before fitting: 95% interval no wider than 3 px on both axes, held-out gain, at least 2,000 points (`results/phase1_refine.csv`).
+
+- Thresholds were not loosened after seeing these results.
+- Applying only the two accepted corrections would leave training partly corrected and the test sequence not, which is worse than a consistent offset.
+- 00003 shares an extrinsics file with 00000 and 00001 but gives a different estimate, so a constant rotation per file does not explain the offset. Per-frame effects such as robot pitch or sync are possible; not investigated.
+- `results/calibration_estimates.yaml` holds all five point estimates, accepted or not, and `cache/gt_sensitivity` is built from them. That cache exists only to show how much the results depend on calibration. Training uses the official one.
+- For 00001, a side-by-side crop confirms the correction: the top ring floats above the barriers with the official calibration and lands on them when corrected.
 
 Evidence for a real offset:
 
