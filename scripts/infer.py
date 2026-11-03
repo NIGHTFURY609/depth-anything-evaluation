@@ -33,10 +33,10 @@ def main() -> None:
 
     cfg = load_config()
     set_seed(cfg["seed"])
+    commit = git_hash()  # before writing the frame list, which would make the tree dirty
     frames = eval_frames(cfg, args.split, args.stride)
     if args.split != "train":
         write_frame_list(frames, Path(cfg["paths"]["results_root"]) / "phase2" / f"frames_{args.split}.csv")
-    commit = git_hash()
     for key in args.models:
         run, kind = load_runner(cfg, key, "cuda")
         paths = write_predictions(

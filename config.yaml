@@ -96,4 +96,4 @@ eval:
   # Block of 30 evaluated frames (about 15 s): val per-image AbsRel stays correlated to lag ~20-30.
   bootstrap: {block: 30, resamples: 1000, seed: 0}
   reference_model: da3_small # paired differences are reported against this model
-  frozen: false
+  frozen: true # 2026-11-03, before any test number
