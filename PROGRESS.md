@@ -10,8 +10,9 @@ Last updated: 2026-11-03.
 | --- | --- | --- |
 | 0: environment, checks, novelty search | Done | Everything fits in 8 GB; no near-duplicate found in a limited search |
 | 1: loader, projection, split, ground truth | Done, gate passed for gross geometry | Ground truth cached for all 13,556 frames; a calibration offset remains and is disclosed |
-| 2: zero-shot baselines, `eval.py` | **In progress** | Plan: Step 0 done |
-| 3 onward | Not started | |
+| 2: zero-shot baselines, `eval.py` | Done | Protocol frozen at `6b486bc`, test evaluated once. Tables 1, 3 and 4 (zero-shot) in `results/phase2/test/tables.md` |
+| 3: fine-tuning | **Next, not started** | |
+| 4 onward | Not started | |
 
 Nothing has been pushed. Commits are on local `main`.
 
@@ -28,7 +29,9 @@ Nothing has been pushed. Commits are on local `main`.
 | DA3 upstream | `~/src/Depth-Anything-3`, commit `3d835ec` |
 | RELLIS data | `~/da3ft-data/rellis` (`Rellis-3D` 45 GB, `raw` 15 GB, `calib` 2.2 MB) |
 | Ground truth caches | `~/da3ft-data/cache/gt` (582 MB), `~/da3ft-data/cache/gt_sensitivity` (574 MB); 13,556 frames each |
-| Overlays (git-ignored, derived from RELLIS images) | `results/overlays/`, 29 files |
+| Prediction cache | `~/da3ft-data/cache/pred/<model>/<seq>/`, val and test for the four zero-shot models (about 3 GB) |
+| Phase 2 results | `results/phase2/{val,test}/`: `tables.md`, `summary_*.csv`, `meta.json` (committed); `*_per_image.csv.gz` (git-ignored, rebuilt by `scripts/eval.py`) |
+| Overlays (git-ignored, derived from RELLIS images) | `results/overlays/`: Phase 1 overlays and crops, low-agreement panels, edge-band and val grass panels |
 
 ## Rerunning everything
 
@@ -45,7 +48,10 @@ python scripts/build_gt.py                 # official calibration, cache/gt
 python scripts/phase1_gate.py              # overlays and results/phase1_*.csv
 python scripts/refine_calibration.py       # results/phase1_refine.csv, calibration_estimates.yaml
 python scripts/build_gt.py --sensitivity   # cache/gt_sensitivity, reporting only
-python -m pytest -q                        # from the repo root: 94 passed on 2026-11-02
+python scripts/infer.py --split val        # 2.5 min; also --split test (writes frames_<split>.csv)
+python scripts/eval.py --split val         # 2-3 min; --split test needs eval.frozen in a clean commit (6.7 min)
+python scripts/grass_look.py               # val-only grass panels
+python -m pytest -q                        # from the repo root: 150 passed on 2026-11-03
 ```
 
 `setup_wsl.sh` installs current packages rather than installing from `requirements.lock`, so an exact rebuild has to install the lock by hand.
@@ -76,6 +82,39 @@ python -m pytest -q                        # from the repo root: 94 passed on 20
 - Trees, ground, people and barriers look right at the scale of the 504x322 overlays, except for the offset. The barrier crop (00001, frame 1545) shows it plainly.
 - So the gate is passed for gross geometry and not passed for a few pixels of vertical alignment. No frames were dropped.
 
+## Phase 2 log
+
+- **Offroad-Nav edge mask read from code.** Otsu per image (not a fixed threshold), a 5 px kernel diameter, and Canny as the shipped default.
+- **DA2 moved into `src/models.py`.** `src/infer.py` caches predictions at batch 1 with model ID and git hash.
+- **`src/eval.py`, `src/report.py` and `scripts/eval.py` built test-first.** The design was critiqued by a planning agent before coding and reviewed independently before the freeze. The review found no arithmetic bug but showed the faithful Sobel mask removes most valid pixels, so the primary filtering comparison became ranked curves at fixed budgets, as the author chose.
+- **Thresholds set from val ground truth:** depth range, edge band k and τ, subset minimum. The bootstrap block came from val autocorrelation. All are logged in DECISIONS.md.
+- **First look at grass errors, on val only:** far grass predicted too close.
+- **Protocol frozen** at `6b486bc` (`eval.frozen: true`, clean tree, test frame list committed). Test was evaluated once, from that commit: 830 frames, none skipped.
+
+### Phase 2 results on test 00002 (zero-shot)
+
+Official GT, LiDAR labels, primary alignment (DA3 median scale, DA2 least-squares scale and shift), AbsRel with 95% block-bootstrap intervals. Full tables are in `results/phase2/test/tables.md`.
+
+| Model | all | grass | grass 20-80 m | edge_depth |
+| --- | --- | --- | --- | --- |
+| DA3-S | 0.155 [0.133, 0.178] | 0.111 [0.094, 0.137] | 0.313 [0.274, 0.360] | 0.370 [0.281, 0.489] |
+| DA3-B | 0.142 [0.123, 0.165] | 0.098 [0.080, 0.124] | 0.238 [0.201, 0.288] | 0.400 [0.302, 0.538] |
+| DA2-S | 0.165 [0.146, 0.186] | 0.102 [0.092, 0.113] | 0.327 [0.277, 0.376] | 0.435 [0.357, 0.530] |
+| DA2-B | 0.169 [0.148, 0.194] | 0.100 [0.090, 0.110] | 0.312 [0.267, 0.358] | 0.454 [0.363, 0.556] |
+
+- **DA3 beats DA2 at equal alignment.** With LS on both sides, DA2-S is worse than DA3-S by 0.030 [0.021, 0.039] AbsRel overall and by 0.108 [0.076, 0.146] on `edge_depth`.
+- **DA3-B against DA3-S (median):** slightly better overall (-0.012) and on grass (-0.014), but worse on `edge_depth` (+0.030 [0.007, 0.058]).
+- **Far grass is hard for every model** (AbsRel 0.24-0.33 at 20-80 m), as on val.
+- **Test is harder than val:** DA3-S all is 0.155 against 0.113.
+- **Confidence (DA3-S, median):** AUROC 0.882 [0.853, 0.901], AUSE 0.033, AURG 0.064.
+- **Filtering (DA3-S):** removing the lowest-confidence 20% of valid pixels cuts AbsRel from 0.155 to 0.100. Sobel-ranked removal gives 0.151, a paired difference of -0.052 [-0.065, -0.039], and confidence wins at every budget. Sobel-ranked removal at 50% is worse than none (0.173).
+- **The faithful Sobel mask** removes 78-79% of valid pixels for DA3 and 51-57% for DA2.
+- **Calibration sensitivity:**
+  - Overall and grass AbsRel barely move.
+  - For DA3, edge bands are about 6-8% lower with the corrected calibration (DA3-S `edge` 0.343 to 0.322) and far grass is about 13% higher (DA3-S 0.313 to 0.354).
+  - DA2's numbers barely move (DA2-S `edge` 0.400 to 0.399), so the calibration choice also shifts the DA2/DA3 gap at edges.
+  - So edge-band and far-range numbers depend on calibration, which is the careful wording the open item anticipated.
+
 ### What has been seen from test sequence 00002
 
 Kept so the claim of a clean test set can be checked.
@@ -83,7 +122,8 @@ Kept so the claim of a clean test set can be checked.
 - Class counts, label agreement and overlays, none of which involve a depth model.
 - Its calibration estimate (+0.88, +4.36), fitted on labels only and used only for sensitivity reporting.
 - From the zero-shot DA3 diagnostic: the location of the best shift only, printed without error values. See `results/diagnostics/depthalign.txt`. These locations did not set any threshold or decision.
-- No depth accuracy for 00002 has been computed or viewed for any model being compared.
+- Until the freeze at `6b486bc`, no depth accuracy for 00002 had been computed or viewed for any model being compared.
+- After the freeze, the zero-shot test results (`results/phase2/test/`) were computed once and read, as summarised above. No test frame was drawn; the grass panels are val only. From here on, Phase 3 choices must rest on val alone.
 
 ## Bugs found and fixed
 
@@ -103,7 +143,8 @@ The first three fixes went test-first, red then green.
 
 ### Must settle before the paper
 
-- **Cause of the calibration offset is unknown.** Per-frame pitch or sync was not investigated. If the two caches give noticeably different results in Phase 2, the edge-band and ground numbers need careful wording.
+- **Cause of the calibration offset is unknown.** Per-frame pitch or sync was not investigated. Phase 2 shows DA3's edge-band (about 7%) and far-grass (about 13%) AbsRel shift between the two caches, while DA2's barely move, so those numbers need careful wording.
+- **Phase 2 eval was reviewed, not proven.** The review re-derived the summaries from the per-image rows, but the final pre-release review should cover `scripts/eval.py`'s table assembly again.
 - **Phase 1 code has had no independent review.** The final pre-release review must cover it.
 - **Repeat the novelty search** before posting, and check the three arXiv and CVPR references.
 - **Say "unseen sequences", not "unseen place".** All sequences come from one site.
@@ -119,16 +160,18 @@ The first three fixes went test-first, red then green.
 - pytest must run from the repo root.
 - `verify_rellis.py` does not check that calibration files exist.
 - `scripts/diagnostics/` has no tests and has not been rerun from its new location.
+- Test predictions are stamped `01eda9a…-dirty`; the only dirty file was the then-untracked `frames_test.csv`. `infer.py` now reads the hash first.
+- An external tool keeps stripping `pytest.ini`'s final newline; the stripped version is committed so the tree stays clean.
 
 ### Disk
 
 - **N:** 57 GB free, against the plan's 50 GB margin. Once the author is happy with Phase 1, the 11.6 GB images zip in the repo root and the 15 GB `raw/` folder can be deleted. Neither has been deleted.
 - **C:** 10.3 GB free, down from 14.9 GB at the start, so the Phase 0 goal of leaving C: unchanged was not met. It dipped to 6.8 GB during the work. The WSL swap file is only 0.04 GB and no large new files turned up in the folders scanned. The Windows pagefile is suspected but unproven.
 
-## Next: Phase 2
+## Next: Phase 3
 
-1. Get the Sobel threshold from the Offroad-Nav code.
-2. Run every zero-shot model on the validation and test frames, caching depth and confidence to `.npz`.
-3. Build `eval.py`: alignment, all metrics, filtering curves, bootstrap, reused unchanged for fine-tuned models. It must report against both `cache/gt` and `cache/gt_sensitivity`, plus the merged vegetation group and the both-label-sources check.
-4. Fix thresholds before viewing test results.
-5. Deliver results tables 1 and 3 (zero-shot part) and a first look at grass errors, then a phase review.
+1. Cache teacher outputs for the train sequences: `python scripts/infer.py --split train --stride 1 --models da3_small`, about 7,090 frames.
+2. Write `train.py` with the confidence-weighted, scale-aligned LiDAR loss and the distillation loss. Run the sanity checks (overfit 10 images, judged on AbsRel; one epoch).
+3. Train head-only, LoRA (main) and no-distillation models. Tune `lambda_d`, `lambda_c` and the learning rate on val only.
+4. Check on val whether fine-tuning removes the far-grass compression or only moves it.
+5. Phase 4 evaluates the checkpoints by caching their predictions under `pred/<name>/` and running the frozen `scripts/eval.py` unchanged.

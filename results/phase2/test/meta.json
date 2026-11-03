@@ -1,0 +1,39 @@
+{
+  "split": "test",
+  "git_hash": "6b486bc97a9b746a282725a65f9942fe54029e79",
+  "models": [
+    "da3_small",
+    "da3_base",
+    "da2_small",
+    "da2_base"
+  ],
+  "gt_sources": [
+    "gt",
+    "gt_sensitivity"
+  ],
+  "config_sha256": "ab9b01992ce7316a91c16b201e6ca9273d6a4f28f7bd15b6c47e78ba4d72a698",
+  "frames": 830,
+  "skipped": [],
+  "predictions": [
+    {
+      "model": "da2_base",
+      "model_id": "depth-anything/Depth-Anything-V2-Base-hf",
+      "cached_at": "01eda9a8d6f4c22f99b6af5fba42c594ef36711b-dirty"
+    },
+    {
+      "model": "da2_small",
+      "model_id": "depth-anything/Depth-Anything-V2-Small-hf",
+      "cached_at": "01eda9a8d6f4c22f99b6af5fba42c594ef36711b-dirty"
+    },
+    {
+      "model": "da3_base",
+      "model_id": "depth-anything/DA3-BASE",
+      "cached_at": "01eda9a8d6f4c22f99b6af5fba42c594ef36711b-dirty"
+    },
+    {
+      "model": "da3_small",
+      "model_id": "depth-anything/DA3-SMALL",
+      "cached_at": "01eda9a8d6f4c22f99b6af5fba42c594ef36711b-dirty"
+    }
+  ]
+}
