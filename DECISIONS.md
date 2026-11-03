@@ -152,6 +152,43 @@ Decisions:
 
 The plan's gate is that overlays line up with trunks and ground on several frames from every sequence. **Passed for gross geometry, not passed for a few pixels of vertical alignment**, which is the offset above. The author accepted proceeding on that basis by choosing official calibration with disclosure as the fallback. What was viewed is listed in [PROGRESS.md](PROGRESS.md).
 
+## 2026-11-03: Phase 1 close-out
+
+- **All 20 sampled overlays have now been viewed.** All pass for gross geometry; the only visible error is the known small upward offset (head-top points sit slightly high on the walkers in 00003 frame 2183 and 00004 frame 2058).
+- **The remaining low-agreement frames are label disagreements, not misalignment.** 00002 frames 102-108 and 1327-1345 and 00001 frame 896 all disagree on grass (3) against bush (19), with geometry intact on the panels viewed (`scripts/diagnostics/lowagree.py`, `results/diagnostics/lowagree.txt`).
+  - In 00002 frames 102-108, LiDAR says bush and the image says grass; from 1325 on, the reverse.
+  - 00001 frame 896 scores 0.17 between neighbours at 0.95. A single image annotation labels the near field bush.
+- **No frames dropped.** The rule, fixed before looking, was to drop only frames visibly misaligned beyond the known global offset. `gt.dropped_frames` exists in `config.yaml` and is empty.
+- **The test sequence is temporally isolated; val and train touch** (`scripts/diagnostics/seqends.py`). Timestamps show:
+  - 00001, 00003 and 00000 were recorded within about 19 minutes on 13 Feb 2020;
+  - 00004 and 00002 were recorded 1.5 h apart on 15 Feb.
+  - Val 00001 ends 53 s before train 00003 starts, at the same spot: the mean grey-level difference is 9.1, against 20 or more for every other pair.
+  - Test 00002 shares no boundary with any sequence.
+  - This affects only model selection on val. It is not corrected, and is stated as a limitation.
+
+## 2026-11-03: the Offroad-Nav edge mask
+
+Read from LARIAD/Offroad-Nav at commit `69640cf`, `mono_depth/src/depth_rescaling/src/depth_estimation/utils.py::edge_detection` and `depth_rescaling_node.py`. Three corrections to research plan v2:
+
+1. **There is no fixed Sobel threshold.** The steps are:
+   1. Min-max scale the DA2 disparity to uint8, at camera resolution.
+   2. Gaussian blur, 5x5.
+   3. Sobel, ksize 3, magnitude via `hypot`.
+   4. Scale the magnitude by its maximum to 0-255.
+   5. **Otsu threshold, per image.**
+   6. Dilate with a `MORPH_ELLIPSE` kernel of size `thickness`.
+2. **"5 px" is the kernel diameter**, about ±2 px, not "within 5 px". The config comment reads "10 for canny, 5 for sobel".
+3. **The shipped default is Canny**, thickness 10. We use Sobel, as the paper describes.
+
+Their camera resolution is not in the repo, so the kernel cannot be scaled to 504 px. We sweep thickness {3, 5, 9} at 504x322 with 5 as primary, and confidence is compared at each Sobel budget.
+
+## 2026-11-03: Phase 2 alignment
+
+The author chose to report **both least squares and Huber** for every scale-and-shift fit (DA2 in disparity, and DA3 in inverse depth as the fairness check). This replaces plan v2's single "robust fit".
+
+- Huber uses δ = 1.345·σ̂, where σ̂ = 1.4826·MAD of the residuals, re-estimated at each iteration. These are textbook constants, so nothing is tuned on data.
+- DA3's main alignment stays scale-only median ratio, the same scale the Phase 3 loss uses.
+
 ## 2026-11-02: working rules
 
 - Never touch WSL distro `Ubuntu-26.04` or change `.wslconfig`.

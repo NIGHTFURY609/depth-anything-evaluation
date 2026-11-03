@@ -11,5 +11,7 @@ Run from the repo root, for example `python scripts/diagnostics/shiftclass.py`. 
 | `edgealign.py` | Do LiDAR depth edges align with image edges? | No usable peak: optima sit at the search limit and move between splits | `edgealign.txt` |
 | `worst.py` | Which frames agree least, and which have few points? | Agreement quantiles. One frame has under 2,000 points (00002, frame 893). Writes worst-case overlays | `worst.txt` |
 | `worst2.py` | Why do the worst frames disagree? | Grass in LiDAR versus bush in the image is the top disagreement pair | `worst2.txt` |
+| `lowagree.py` | Why do the remaining low-agreement frames disagree? | Every one is grass against bush, with geometry intact. 00001 frame 896 is a single bad annotation between good neighbours | `lowagree.txt`, panels in `results/overlays/` |
+| `seqends.py` | Do any sequences run into each other? | Only 00001's end and 00003's start (53 s apart, same spot). Test 00002 is isolated | `seqends.txt` |
 | `crop.py` | Does the alignment look right at full resolution? | Top ring floats above the barrier in 00001 frame 1545 | Images in `results/overlays/` (git-ignored) |
 | `crop2.py` | Does the correction fix that crop? | Official on top, corrected below: the ring lands on the barrier | Images in `results/overlays/` (git-ignored) |

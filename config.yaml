@@ -46,6 +46,9 @@ gt:
   source_size: [1920, 1200]
   # Primary ground truth uses the official calibration; these estimates are for sensitivity only.
   sensitivity_calibration: results/calibration_estimates.yaml
+  # Rule fixed before looking: drop only frames visibly misaligned beyond the known global offset.
+  # Checked 2026-11-03: none qualified.
+  dropped_frames: {}
   # Fixed before fitting. Person is excluded: its labels barely overlap between sources.
   refinement:
     classes: [5, 8, 18, 23, 27] # pole, vehicle, fence, concrete, barrier

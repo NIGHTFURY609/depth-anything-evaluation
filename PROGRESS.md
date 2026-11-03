@@ -2,15 +2,15 @@
 
 Where the project stands, what has been done and what is still open. The reasoning behind each choice is in [DECISIONS.md](DECISIONS.md). Update both at the end of every phase.
 
-Last updated: 2026-11-02.
+Last updated: 2026-11-03.
 
 ## Status
 
 | Phase (research plan section 8) | State | Result |
 | --- | --- | --- |
 | 0: environment, checks, novelty search | Done | Everything fits in 8 GB; no near-duplicate found in a limited search |
-| 1: loader, projection, split, ground truth | Done, gate partly passed | Ground truth cached for all 13,556 frames; a calibration offset remains and is disclosed |
-| 2: zero-shot baselines, `eval.py` | **Next, not started** | |
+| 1: loader, projection, split, ground truth | Done, gate passed for gross geometry | Ground truth cached for all 13,556 frames; a calibration offset remains and is disclosed |
+| 2: zero-shot baselines, `eval.py` | **In progress** | Plan: Step 0 done |
 | 3 onward | Not started | |
 
 Nothing has been pushed. Commits are on local `main`.
@@ -68,12 +68,13 @@ python -m pytest -q                        # from the repo root: 94 passed on 20
 - Ground truth cached at 504x322 for every frame. No frames dropped.
 - Calibration offset found. The author chose to refine and compare, with official calibration as the fallback. The pre-fixed rule accepted two of five sequences, so the fallback applies. Official calibration is primary; all five estimates build the sensitivity cache.
 - Grass versus bush found as the largest label disagreement. LiDAR labels stay primary, with a merged vegetation group and a both-sources check.
+- Close-out (2026-11-03): the last 8 sampled overlays viewed. Every frame below 0.3 agreement explained as grass versus bush with intact geometry. No frames dropped. Sequence ends compared: only val 00001 and train 00003 are continuous.
 
 ### Overlay gate: what was actually checked
 
-- Viewed: 12 of the 20 sampled overlays, plus a few of the worst-case overlays and full-resolution crops. The other sampled overlays have not been viewed.
-- Trees and ground look right at the scale of the 504x322 overlays, except for the offset. The barrier crop (00001, frame 1545) shows it plainly.
-- So the gate is passed for gross geometry and not passed for a few pixels of vertical alignment.
+- Viewed: all 20 sampled overlays (the last 8 on 2026-11-03), the worst-case overlays, full-resolution crops, and label panels for every frame still below 0.3 agreement.
+- Trees, ground, people and barriers look right at the scale of the 504x322 overlays, except for the offset. The barrier crop (00001, frame 1545) shows it plainly.
+- So the gate is passed for gross geometry and not passed for a few pixels of vertical alignment. No frames were dropped.
 
 ### What has been seen from test sequence 00002
 
@@ -106,7 +107,7 @@ The first three fixes went test-first, red then green.
 - **Phase 1 code has had no independent review.** The final pre-release review must cover it.
 - **Repeat the novelty search** before posting, and check the three arXiv and CVPR references.
 - **Say "unseen sequences", not "unseen place".** All sequences come from one site.
-- **Low-agreement frames were only partly explained.** 00002 frames 1215-1277 are mostly grass-versus-bush, confirmed on frames 1255 and 1265. Other frames below 0.3 were not inspected: 00002 frames 102-108 and 1327-1345, and 00001 frame 896.
+- **Val and train touch at one boundary.** 00001 ends 53 s before 00003 starts, at the same spot. State it as a limitation of model selection; the test sequence is isolated.
 
 ### Small code issues, deferred
 

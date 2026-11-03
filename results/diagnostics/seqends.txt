@@ -1,0 +1,30 @@
+00000 first frame000000-1581624652_750.jpg last frame002846-1581624937_350.jpg
+00001 first frame000000-1581623790_349.jpg last frame002318-1581624022_149.jpg
+00002 first frame000000-1581797150_409.jpg last frame004146-1581797565_009.jpg
+00003 first frame000000-1581624075_250.jpg last frame002183-1581624293_549.jpg
+00004 first frame000000-1581791678_408.jpg last frame002058-1581791884_208.jpg
+00000 consecutive-frame baseline MAD 2.1
+00001 consecutive-frame baseline MAD 1.0
+00002 consecutive-frame baseline MAD 2.1
+00003 consecutive-frame baseline MAD 1.3
+00004 consecutive-frame baseline MAD 1.0
+last 00000 -> first 00001: MAD  22.3
+last 00000 -> first 00002: MAD  45.5
+last 00000 -> first 00003: MAD  33.2
+last 00000 -> first 00004: MAD 103.1
+last 00001 -> first 00000: MAD  38.0
+last 00001 -> first 00002: MAD  59.1
+last 00001 -> first 00003: MAD   9.1  <-- near duplicate
+last 00001 -> first 00004: MAD  79.5
+last 00002 -> first 00000: MAD  53.0
+last 00002 -> first 00001: MAD  52.4
+last 00002 -> first 00003: MAD  39.9
+last 00002 -> first 00004: MAD  43.5
+last 00003 -> first 00000: MAD  49.2
+last 00003 -> first 00001: MAD  19.9
+last 00003 -> first 00002: MAD  32.8
+last 00003 -> first 00004: MAD  90.6
+last 00004 -> first 00000: MAD  46.5
+last 00004 -> first 00001: MAD  41.1
+last 00004 -> first 00002: MAD  62.6
+last 00004 -> first 00003: MAD  27.7
