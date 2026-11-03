@@ -189,6 +189,76 @@ The author chose to report **both least squares and Huber** for every scale-and-
 - Huber uses δ = 1.345·σ̂, where σ̂ = 1.4826·MAD of the residuals, re-estimated at each iteration. These are textbook constants, so nothing is tuned on data.
 - DA3's main alignment stays scale-only median ratio, the same scale the Phase 3 loss uses.
 
+## 2026-11-03: Phase 2 evaluation protocol, fixed on val before any test number
+
+All values are in `config.yaml` under `eval:`. They were set from val ground truth (`scripts/diagnostics/valgt_stats.py`, `results/diagnostics/valgt_stats.txt`) or from val per-image statistics. No test depth number existed when they were set.
+
+**Valid set.** `keep` (occlusion-filtered) and 1-80 m. It depends only on ground truth, so every model is scored on the same pixels. In val GT nothing is below 3.4 m and 0.008% is beyond 80 m. Images with under 200 valid pixels are skipped and logged; none were on val.
+
+**Alignment.** Fitted once per image on all valid pixels, then applied to every subset. Every model's depth is clamped to [1, 80] m, and the clamped share is reported.
+- DA3: `median` (scale only, main), plus `ls` and `huber` scale and shift in inverse depth (the fairness check).
+- DA2: `ls` and `huber` in disparity. Non-positive disparity becomes 80 m.
+- Huber constants are as logged above. Both estimators are reported everywhere, as the author chose.
+
+**Metrics.** AbsRel, RMSE, δ1 (< 1.25), phantom rate (pred < 0.8 g, strict), overshoot (pred > 1.25 g). Phantom rate is compared only within one alignment, because median scaling puts about half the pixels below ratio 1 by construction.
+
+**Subsets.**
+- all, grass, trees_bushes, ground, other, vegetation (grass ∪ trees_bushes).
+- Distance bins 0-10, 10-20 and 20-80 m for all, grass, trees_bushes, ground and vegetation. Val GT puts 62%, 29% and 9% of points in them; only 0.4% are beyond 40 m, which is why there is no 40-80 m bin.
+- A subset under 50 pixels in an image gives NaN for that image, and the number of images is reported. The value 50 was lowered from a proposed 100 because `edge_depth` has a median of 71 pixels per val image, and 100 would have kept only 30% of images.
+- LiDAR labels are primary. On annotated frames the same subsets are also computed from image labels, alongside LiDAR labels restricted to the same frames (`lidar_annotated`). Image labels sampled at LiDAR pixels inherit the calibration offset.
+
+**Edge band.** A valid pixel is in the band if a LiDAR point in range lies within row ±1 and column ±4 of it, and across either a depth jump (ratio > 1.2, `edge_depth`) or a boundary between merged groups (grass and trees together, ground, other; void ignored, `edge_semantic`). `edge` is the union, the plan's definition.
+- Jumps are searched among all in-range points, not only `keep`, because the occlusion filter removes exactly the far points beside a near edge.
+- Rows ±1 never reach the next ring, about 7 rows away, so flat ground is not flagged. Horizontal depth edges between rings cannot be detected.
+- k = 4 is about two point spacings (the median gap along a ring is 2 px) and equals the occlusion filter's radius. τ = 0.2 equals the filter's threshold.
+- On val, `edge_semantic` is dominated by flat grass/mud trail edges, which carry no depth jump. That is why both parts are reported separately.
+
+**Confidence (DA3).**
+- AUROC per image: positive means per-pixel AbsRel > 0.25 after alignment, and the score is -conf. Images with fewer than 20 positives or 20 negatives are excluded and counted.
+- Sparsification of AbsRel over fractions 0 to 0.95 in steps of 0.05, removing the lowest confidence first, with ties broken randomly (seeded per frame). Alignment is never refitted.
+- AUSE is against the oracle. AURG is against random removal, whose expected curve is flat; it is reported because AUSE scales with base error.
+
+**Filtering.** The Sobel signal is disparity for DA2 and 1/depth for DA3. AbsRel and phantom rate are taken on the valid pixels left. Random removal is the mean of 10 seeded removals. There are two comparisons.
+
+- **Primary: ranked removal at fixed budgets of 10, 20, 30 and 50% of valid pixels.** At each budget the filters remove:
+  - `sobelrank`: the highest Sobel scores, where the score is Offroad-Nav's gradient magnitude dilated with their kernel at diameter 5;
+  - `confrank`: the lowest confidence;
+  - `randomrank`: pixels at random.
+
+  Each comparison has a paired per-image interval.
+- **Secondary: the faithful Offroad-Nav mask (Otsu) at its own budget**, at thickness 3, 5 and 9:
+  - `conf_valid` removes as many valid pixels as Sobel did;
+  - `conf_all` removes as many pixels of the whole image, which is the deployment view;
+  - `random_valid` removes at random.
+- **Why the primary comparison changed.** The independent review found that the faithful mask removes 73-86% of valid pixels on val on average (median 94-96%). Otsu splits the zero-gradient sky from everything else, so sloping ground counts as edge, and this holds at camera resolution too. A comparison at that budget leaves a handful of pixels per image. The author chose the ranked curves, keeping the faithful mask as a reported point. This replaces the `conf_valid` vs `sobel5` primary set earlier the same day, before any test number.
+- **Guard.** If any filter in a comparison group (one Sobel thickness, or one budget) leaves fewer than 50 valid pixels in an image, every filter in that group is NaN for that image. Comparisons therefore stay over the same images.
+
+**Statistics.** Per-image metrics are averaged over images, with 95% percentile intervals from a block bootstrap: 1,000 resamples, seed 0, NaN images skipped. Blocks are cut on each image's position in the split's frame list, so subsets on every other frame (image labels) get blocks of the same duration. Paired differences against DA3-S use images valid for both and the same alignment, for AbsRel and phantom rate per subset, and for AUROC, AUSE and AURG.
+- **The block is 30 evaluated frames, not plan v2's 10.** On val, interval width kept growing with block size (DA3-S AbsRel ±0.015 at 10, ±0.022 at 40), and per-image AbsRel stays autocorrelated to lag 20-30 for DA2 (lag 5-10 for DA3). 30 frames is about 15 s of driving, giving about 28 blocks on test.
+
+**Frames.** Every 5th frame of the sequence, minus `gt.dropped_frames` (none). The lists are committed as `results/phase2/frames_<split>.csv`, and `scripts/eval.py` refuses to run if they differ from the config's selection.
+
+**Primary comparisons for Phase 4, registered now.**
+- DA3-S-zs against DA3-S-ft-lora, `median` alignment, official GT, LiDAR labels: AbsRel on grass, vegetation, `edge`, `edge_depth` and all, with phantom rate on grass.
+- For confidence, AUROC and AURG.
+- For filtering, AbsRel of `confrank` against `sobelrank` at every budget, with 20% as the headline, for zero-shot and fine-tuned DA3-S.
+- All other cells, including both alignments and the sensitivity GT, are secondary.
+
+**Independent review (2026-11-03, before the freeze).** A fresh reviewer re-derived the summaries from the per-image rows and found no arithmetic bug. Its findings, all fixed before freezing:
+- The Sobel budget problem above.
+- Registered comparisons lacked paired statistics; now added.
+- Model names and primary alignments were hardcoded. They now come from the config or the command line and the prediction's kind, so fine-tuned models need no code change.
+- Cached predictions are now checked against the config's model ID and the GT shape, and their provenance is written to `meta.json`.
+- A DA2-only run crashed.
+- Image-label subsets had blocks twice as long in time.
+- Tests added: brute-force sparsification, equal removal counts, the group guard, determinism, position-based blocks.
+
+**First look at grass errors (val only, `scripts/grass_look.py`).**
+- DA3-S with `median` has grass AbsRel of 0.05 at 0-10 m and 0.30 at 20-80 m, and 84% of far-grass pixels are phantoms (predicted under 0.8x the LiDAR depth). In the worst frames, the far band of tall grass is predicted too close.
+- Scale-and-shift in inverse depth cuts far-grass AbsRel to 0.19 (LS) or 0.15 (Huber), and the phantom rate to 0.41 or 0.25. Much of the error is therefore a distance-dependent compression that one scale cannot fix. DA3-B (0.18 with `median`) and DA2-S (0.16 with LS) show it less.
+- Phase 3 should check whether fine-tuning removes it or only moves it.
+
 ## 2026-11-02: working rules
 
 - Never touch WSL distro `Ubuntu-26.04` or change `.wslconfig`.

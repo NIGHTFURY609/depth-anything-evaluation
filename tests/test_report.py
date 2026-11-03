@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.report import fmt, paired, summarize
+from src.report import fmt, paired, summarize, within_model_differences
 
 
 def per_image(model, values, subset="all"):
@@ -47,3 +47,19 @@ def test_fmt():
 def test_paired_with_only_the_reference_is_empty_but_has_columns():
     out = paired(per_image("ref", [0.2] * 5), ["subset"], ["absrel"], "ref", 5, 10, 0)
     assert out.empty and {"model", "subset", "mean"} <= set(out.columns)
+
+
+def test_summarize_of_nothing_has_columns():
+    out = summarize(pd.DataFrame(), ["model"], ["absrel"], 5, 10, 0)
+    assert out.empty and {"model", "metric", "mean"} <= set(out.columns)
+
+
+def test_within_model_differences_pair_by_image():
+    df = pd.DataFrame({
+        "seq": "00001", "frame": [0, 5, 0, 5], "model": "m",
+        "filter": ["conf5", "conf5", "sobel5", "sobel5"], "absrel": [0.1, np.nan, 0.3, 0.2],
+    })
+    out = within_model_differences(df, ["model"], [("conf5", "sobel5")], ["absrel"])
+    assert out["filter"].unique().tolist() == ["conf5-sobel5"]
+    assert out.sort_values("frame")["absrel"].tolist()[0] == pytest.approx(-0.2)
+    assert np.isnan(out.sort_values("frame")["absrel"].tolist()[1])

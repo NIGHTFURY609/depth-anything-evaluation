@@ -87,7 +87,11 @@ eval:
   overshoot_ratio: 1.25
   sparsification_step: 0.05
   sparsification_max: 0.95
-  sobel_thickness: [3, 5, 9] # Offroad-Nav uses 5 at its own resolution; 5 is primary
+  sobel_thickness: [3, 5, 9] # faithful Otsu mask; removes 73-86% of valid pixels on val
+  # Primary filtering comparison: remove a fixed share of valid pixels, ranked by Sobel score,
+  # lowest confidence or at random. The rank uses the primary kernel diameter.
+  filter_budgets: [0.1, 0.2, 0.3, 0.5]
+  sobel_rank_thickness: 5
   random_filter_seeds: 10
   # Block of 30 evaluated frames (about 15 s): val per-image AbsRel stays correlated to lag ~20-30.
   bootstrap: {block: 30, resamples: 1000, seed: 0}

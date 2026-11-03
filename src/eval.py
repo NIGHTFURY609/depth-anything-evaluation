@@ -188,23 +188,43 @@ def auroc(score, positive, min_pos: int = 20, min_neg: int = 20) -> float:
 
 # --- filtering ---------------------------------------------------------------------------
 
-def sobel_mask(image, thickness: int) -> np.ndarray:
-    """The Offroad-Nav edge mask (LARIAD/Offroad-Nav @ 69640cf, MIT): min-max to uint8, 5x5
-    Gaussian, 3x3 Sobel magnitude scaled to its maximum, Otsu threshold, elliptical dilation of
-    diameter `thickness`. Pass disparity, or 1/depth for depth models."""
+def _sobel_magnitude(image) -> np.ndarray | None:
+    """Offroad-Nav's gradient magnitude, 0-255: min-max to uint8, 5x5 Gaussian, 3x3 Sobel,
+    scaled by its maximum. None for a constant image."""
     lo, hi = float(image.min()), float(image.max())
     if hi <= lo:
-        return np.zeros(image.shape, bool)
+        return None
     gray = ((image - lo) / (hi - lo) * 255.0).astype(np.uint8)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     mag = np.hypot(cv2.Sobel(blurred, cv2.CV_64F, 1, 0, ksize=3), cv2.Sobel(blurred, cv2.CV_64F, 0, 1, ksize=3))
     top = mag.max()
-    mag = mag / top * 255.0 if top > 0 else np.zeros_like(mag)
+    return mag / top * 255.0 if top > 0 else np.zeros_like(mag)
+
+
+def _ellipse(thickness: int) -> np.ndarray:
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (thickness, thickness))
+
+
+def sobel_mask(image, thickness: int) -> np.ndarray:
+    """The Offroad-Nav edge mask (LARIAD/Offroad-Nav @ 69640cf, MIT): the magnitude above, Otsu
+    threshold, elliptical dilation of diameter `thickness`. Pass disparity, or 1/depth."""
+    mag = _sobel_magnitude(image)
+    if mag is None:
+        return np.zeros(image.shape, bool)
     _, edges = cv2.threshold(mag.astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     if thickness > 1:
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (thickness, thickness))
-        edges = cv2.dilate(edges, kernel, iterations=1)
+        edges = cv2.dilate(edges, _ellipse(thickness), iterations=1)
     return edges > 0
+
+
+def sobel_score(image, thickness: int) -> np.ndarray:
+    """The same magnitude, dilated like the mask, as a continuous score: each pixel takes the
+    strongest gradient within the kernel. Removing the highest scores first is the Sobel filter
+    at any chosen budget. Its Otsu threshold removes 73-86% of valid pixels on RELLIS val."""
+    mag = _sobel_magnitude(image)
+    if mag is None:
+        return np.zeros(image.shape)
+    return cv2.dilate(mag, _ellipse(thickness), iterations=1) if thickness > 1 else mag
 
 
 def budget_remove(scores, n: int, candidates, rng) -> np.ndarray:
@@ -218,15 +238,22 @@ def budget_remove(scores, n: int, candidates, rng) -> np.ndarray:
 
 # --- bootstrap ---------------------------------------------------------------------------
 
-def block_bootstrap(values, block: int, resamples: int, seed: int) -> tuple[float, float, float]:
+def block_bootstrap(values, block: int, resamples: int, seed: int,
+                    positions=None) -> tuple[float, float, float]:
     """Mean and 95% percentile interval, resampling blocks of consecutive images. NaNs are
-    skipped, as in a nan-mean of each resample."""
+    skipped, as in a nan-mean of each resample.
+
+    `positions` are the images' indices in the split's full frame list. Blocks are cut on them,
+    so a subset present only on some frames (image labels exist on every other one) still gets
+    blocks of the same length in time.
+    """
     v = np.asarray(values, np.float64)
-    starts = np.arange(0, v.size, block)
+    positions = np.arange(v.size) if positions is None else np.asarray(positions)
+    _, ids = np.unique(positions // block, return_inverse=True)
     ok = ~np.isnan(v)
-    sums = np.add.reduceat(np.where(ok, v, 0.0), starts)
-    counts = np.add.reduceat(ok.astype(np.float64), starts)
-    pick = np.random.default_rng(seed).integers(0, starts.size, (resamples, starts.size))
+    sums = np.bincount(ids, np.where(ok, v, 0.0))
+    counts = np.bincount(ids, ok.astype(np.float64))
+    pick = np.random.default_rng(seed).integers(0, sums.size, (resamples, sums.size))
     with np.errstate(invalid="ignore", divide="ignore"):
         means = sums[pick].sum(axis=1) / counts[pick].sum(axis=1)
     mean = float(sums.sum() / counts.sum()) if counts.sum() else np.nan
@@ -234,9 +261,11 @@ def block_bootstrap(values, block: int, resamples: int, seed: int) -> tuple[floa
     return mean, float(lo), float(hi)
 
 
-def paired_block_bootstrap(a, b, block: int, resamples: int, seed: int) -> tuple[float, float, float]:
+def paired_block_bootstrap(a, b, block: int, resamples: int, seed: int,
+                           positions=None) -> tuple[float, float, float]:
     """Mean difference a - b over images valid for both, with the same block resampling."""
-    return block_bootstrap(np.asarray(a, np.float64) - np.asarray(b, np.float64), block, resamples, seed)
+    diff = np.asarray(a, np.float64) - np.asarray(b, np.float64)
+    return block_bootstrap(diff, block, resamples, seed, positions)
 
 
 # --- one frame, and the freeze gate ------------------------------------------------------
@@ -294,41 +323,66 @@ def evaluate_frame(pred, conf, kind: str, gt: dict, ecfg: dict, rng) -> dict:
             })
             out["curves"].append({"align": method, "conf": curves["conf"], "oracle": curves["oracle"]})
 
-        for name, removed in filters.items():
+        rows = []
+        for name, (group, removed) in filters.items():
             masks = removed if isinstance(removed, tuple) else (removed,)
             scores = [pixel_metrics(aligned[valid & ~m], depth[valid & ~m], **ratios) for m in masks]
-            out["filtering"].append({
+            rows.append({
                 "align": method,
                 "filter": name,
+                "group": group,
                 "removed_valid": float(np.mean([(m & valid).sum() / valid.sum() for m in masks])),
                 "removed_all": float(np.mean([m.mean() for m in masks])),
+                "remaining": int(min(r["n"] for r in scores)),
                 "absrel": float(np.mean([r["absrel"] for r in scores])),
                 "phantom": float(np.mean([r["phantom"] for r in scores])),
             })
+        # A filter that leaves too few pixels voids every filter it is compared with, so the
+        # comparisons stay over the same images.
+        for group in {r["group"] for r in rows}:
+            members = [r for r in rows if r["group"] == group]
+            if min(r["remaining"] for r in members) < ecfg["min_subset_px"]:
+                for r in members:
+                    r["absrel"] = r["phantom"] = np.nan
+        out["filtering"] += rows
     return out
 
 
 def _filter_masks(pred, conf, kind: str, valid, ecfg: dict, rng) -> dict:
-    """Removal masks, fixed before alignment so every alignment sees the same removals.
+    """Removal masks as {name: (comparison group, mask or tuple of masks)}, fixed before
+    alignment so every alignment sees the same removals.
 
-    At each Sobel thickness, confidence removes as many valid pixels as Sobel did (`conf_valid`,
-    the primary comparison) or as many pixels of the whole image (`conf_all`, the deployment
-    view, which may spend its budget on sky). Random removal is a tuple of masks, one per seed.
+    Faithful Offroad-Nav mask, at each thickness: confidence removes as many valid pixels as
+    Sobel did (`conf_valid`) or as many pixels of the whole image (`conf_all`, the deployment
+    view, which may spend its budget on sky). Ranked filters, at each fixed share of valid
+    pixels, the primary comparison: the highest Sobel scores (`sobelrank`), the lowest
+    confidence (`confrank`), or at random (`randomrank`). Random removal is one mask per seed.
     """
     signal = pred if kind == "disparity" else np.divide(1.0, pred, out=np.zeros_like(pred), where=pred > 0)
     everything = np.ones_like(valid)
-    masks = {"none": np.zeros_like(valid)}
+
+    def random(n):
+        return tuple(budget_remove(rng.random(valid.shape), n, valid, rng)
+                     for _ in range(ecfg["random_filter_seeds"]))
+
+    masks = {"none": ("none", np.zeros_like(valid))}
     for th in ecfg["sobel_thickness"]:
         sobel = sobel_mask(signal, th)
         n_valid, n_all = int((sobel & valid).sum()), int(sobel.sum())
-        masks[f"sobel{th}"] = sobel
+        group = f"sobel{th}"
+        masks[f"sobel{th}"] = (group, sobel)
         if conf is not None:
-            masks[f"conf_valid{th}"] = budget_remove(conf, n_valid, valid, rng)
-            masks[f"conf_all{th}"] = budget_remove(conf, n_all, everything, rng)
-        masks[f"random_valid{th}"] = tuple(
-            budget_remove(rng.random(valid.shape), n_valid, valid, rng)
-            for _ in range(ecfg["random_filter_seeds"])
-        )
+            masks[f"conf_valid{th}"] = (group, budget_remove(conf, n_valid, valid, rng))
+            masks[f"conf_all{th}"] = (group, budget_remove(conf, n_all, everything, rng))
+        masks[f"random_valid{th}"] = (group, random(n_valid))
+    score = sobel_score(signal, ecfg["sobel_rank_thickness"])
+    for budget in ecfg["filter_budgets"]:
+        n = int(round(budget * valid.sum()))
+        group = f"rank{budget:g}"
+        masks[f"sobelrank{budget:g}"] = (group, budget_remove(-score, n, valid, rng))
+        if conf is not None:
+            masks[f"confrank{budget:g}"] = (group, budget_remove(conf, n, valid, rng))
+        masks[f"randomrank{budget:g}"] = (group, random(n))
     return masks
 
 

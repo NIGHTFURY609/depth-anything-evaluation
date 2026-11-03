@@ -1,17 +1,39 @@
 {
   "split": "val",
-  "git_hash": "5dc8fa2c634b85b4a779fdd1cde6a3e679c5621b-dirty",
+  "git_hash": "1e7a79f56662192b467efb5beb216917b58b030b-dirty",
   "models": [
-    "da2_small",
-    "da2_base",
     "da3_small",
-    "da3_base"
+    "da3_base",
+    "da2_small",
+    "da2_base"
   ],
   "gt_sources": [
     "gt",
     "gt_sensitivity"
   ],
-  "config_sha256": "a2ca8142daaeff1bde32c16e4a339573e932f663713f1787933c657908a03a29",
+  "config_sha256": "8b060c0cde8b16cafe28e48e8ffbc01e2d0115c56b71cb7d9cbf4f0860261941",
   "frames": 464,
-  "skipped": []
+  "skipped": [],
+  "predictions": [
+    {
+      "model": "da2_base",
+      "model_id": "depth-anything/Depth-Anything-V2-Base-hf",
+      "cached_at": "07773b553f8cab896321605f842c90976c68afd9-dirty"
+    },
+    {
+      "model": "da2_small",
+      "model_id": "depth-anything/Depth-Anything-V2-Small-hf",
+      "cached_at": "07773b553f8cab896321605f842c90976c68afd9-dirty"
+    },
+    {
+      "model": "da3_base",
+      "model_id": "depth-anything/DA3-BASE",
+      "cached_at": "07773b553f8cab896321605f842c90976c68afd9-dirty"
+    },
+    {
+      "model": "da3_small",
+      "model_id": "depth-anything/DA3-SMALL",
+      "cached_at": "07773b553f8cab896321605f842c90976c68afd9-dirty"
+    }
+  ]
 }

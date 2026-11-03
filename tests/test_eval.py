@@ -296,13 +296,14 @@ def test_jump_partner_need_not_be_scored_itself():
 
 # --- per-frame evaluation and the freeze gate --------------------------------------------
 
-from src.eval import check_can_evaluate, evaluate_frame  # noqa: E402
+from src.eval import check_can_evaluate, evaluate_frame, sobel_score  # noqa: E402
 
 ECFG = {
     "min_depth": 1.0, "max_depth": 80.0, "min_valid": 200, "min_subset_px": 100, "edge_k": 4,
     "edge_tau": 0.2, "distance_bins": [0, 10, 20, 80], "high_error": 0.25, "auroc_min_class": 20,
     "phantom_ratio": 0.8, "overshoot_ratio": 1.25, "sparsification_step": 0.05,
     "sparsification_max": 0.95, "sobel_thickness": [3, 5], "random_filter_seeds": 3,
+    "filter_budgets": [0.1, 0.5], "sobel_rank_thickness": 5,
 }
 
 
@@ -339,6 +340,7 @@ def test_perfect_depth_prediction_scores_perfectly():
     assert {r["align"] for r in out["confidence"]} == {"median", "ls", "huber"}
     filters = {r["filter"] for r in out["filtering"]}
     assert {"none", "sobel3", "conf_valid3", "conf_all3", "random_valid3", "sobel5"} <= filters
+    assert {"sobelrank0.1", "confrank0.1", "randomrank0.1", "confrank0.5"} <= filters
 
 
 def test_disparity_model_has_no_confidence_rows_or_median():
@@ -372,3 +374,68 @@ def test_test_split_requires_frozen_config_and_clean_tree():
     with pytest.raises(SystemExit):
         check_can_evaluate("test", frozen=True, dirty=True)
     check_can_evaluate("test", frozen=True, dirty=False)
+
+
+def test_removal_curve_matches_brute_force():
+    err = RNG.uniform(0, 1, 137)
+    conf = np.round(RNG.uniform(1, 3, 137), 1)  # many ties
+    s = sparsification(err, conf, FRACTIONS, np.random.default_rng(5))
+    order = np.lexsort((np.random.default_rng(5).random(137), conf))
+    for f, value in zip(FRACTIONS, s["conf"]):
+        k = int(np.floor(f * 137))
+        assert value == pytest.approx(err[order[k:]].mean())
+    by_err = np.sort(err)
+    for f, value in zip(FRACTIONS, s["oracle"]):
+        assert value == pytest.approx(by_err[: 137 - int(np.floor(f * 137))].mean())
+
+
+def filtering_rows(out, align="median"):
+    return {r["filter"]: r for r in out["filtering"] if r["align"] == align}
+
+
+def test_filters_in_a_group_remove_the_same_number_of_valid_pixels():
+    gt = synthetic_gt()
+    pred = dense(gt["depth"]) * RNG.uniform(0.9, 1.1, (60, 80))
+    conf = RNG.uniform(1, 5, (60, 80))
+    rows = filtering_rows(evaluate_frame(pred, conf, "depth", gt, ECFG, np.random.default_rng(0)))
+    n_valid = int((gt["keep"]).sum())
+    for th in (3, 5):
+        removed = {rows[f"{k}{th}"]["removed_valid"] for k in ("sobel", "conf_valid", "random_valid")}
+        assert max(removed) - min(removed) < 1e-12
+    for b in (0.1, 0.5):
+        for k in ("sobelrank", "confrank", "randomrank"):
+            assert rows[f"{k}{b:g}"]["removed_valid"] == pytest.approx(round(b * n_valid) / n_valid)
+
+
+def test_a_filter_leaving_too_few_pixels_voids_its_whole_group():
+    gt = synthetic_gt()
+    pred = dense(gt["depth"])
+    cfg = {**ECFG, "filter_budgets": [0.95], "min_subset_px": 50}  # 5% of 760 = 38 left
+    rows = filtering_rows(evaluate_frame(pred, np.ones((60, 80)), "depth", gt, cfg, np.random.default_rng(0)))
+    assert all(np.isnan(rows[k]["absrel"]) for k in ("sobelrank0.95", "confrank0.95", "randomrank0.95"))
+    assert np.isfinite(rows["none"]["absrel"])
+
+
+def test_evaluate_frame_is_deterministic_for_a_seed():
+    gt = synthetic_gt(annotated=True)
+    pred = dense(gt["depth"]) * RNG.uniform(0.8, 1.2, (60, 80))
+    conf = np.round(RNG.uniform(1, 2, (60, 80)), 1)
+    a = evaluate_frame(pred, conf, "depth", gt, ECFG, np.random.default_rng(7))
+    b = evaluate_frame(pred, conf, "depth", gt, ECFG, np.random.default_rng(7))
+    for key in ("accuracy", "confidence", "filtering"):
+        assert str(a[key]) == str(b[key])
+
+
+def test_sobel_score_ranks_the_masked_pixels_first():
+    disp = smooth_scene()
+    score = sobel_score(disp, 5)
+    mask = sobel_mask(disp, 5)
+    assert score[mask].min() >= np.median(score[~mask])
+
+
+def test_bootstrap_blocks_follow_frame_positions():
+    """Values on every other frame: positions put 15 of them in each block of 30 frames."""
+    v = RNG.random(60)
+    by_position = block_bootstrap(v, 30, 300, 0, positions=np.arange(60) * 2)
+    by_row = block_bootstrap(v, 15, 300, 0)
+    assert by_position == by_row
