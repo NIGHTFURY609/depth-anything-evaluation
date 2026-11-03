@@ -8,6 +8,7 @@ from depth_anything_3.model.da3 import DepthAnything3Net
 from depth_anything_3.utils.io.input_processor import InputProcessor
 from peft import LoraConfig, inject_adapter_in_model
 from torch.utils.checkpoint import checkpoint
+from transformers import AutoModelForDepthEstimation
 
 # Scoped to attention layers: patch_embed.proj also matches a bare "proj".
 LORA_TARGET_REGEX = r".*blocks\.\d+\.attn\.(qkv|proj)"
@@ -15,6 +16,16 @@ LORA_TARGET_REGEX = r".*blocks\.\d+\.attn\.(qkv|proj)"
 
 def load_da3(hf_id: str, device: str) -> DepthAnything3:
     return DepthAnything3.from_pretrained(hf_id).to(device).eval()
+
+
+def load_da2(hf_id: str, device: str):
+    return AutoModelForDepthEstimation.from_pretrained(hf_id).to(device).eval()
+
+
+def forward_da2(model, x: torch.Tensor) -> torch.Tensor:
+    """Relative disparity, (B, H, W). float32, like the official pipeline: bf16 would quantise
+    the disparity baselines."""
+    return model(pixel_values=x).predicted_depth
 
 
 def preprocess(images: list, process_res: int = 504) -> torch.Tensor:

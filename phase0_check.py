@@ -8,10 +8,11 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from transformers import AutoModelForDepthEstimation
 
 from src.config import load_config, set_seed
-from src.models import enable_checkpointing, forward_da3, load_da3, preprocess, set_trainable
+from src.models import (
+    enable_checkpointing, forward_da2, forward_da3, load_da2, load_da3, preprocess, set_trainable,
+)
 
 COLUMNS = [
     "model", "kind", "mode", "batch", "checkpointing", "has_conf", "out_h", "out_w",
@@ -66,11 +67,10 @@ def load_da3_runner(model_id: str):
 
 
 def load_da2_runner(model_id: str):
-    model = AutoModelForDepthEstimation.from_pretrained(model_id).to(DEVICE).eval()
+    model = load_da2(model_id, DEVICE)
 
-    # float32, like the official pipeline: bf16 would quantise the disparity baselines.
     def run(x):
-        return model(pixel_values=x).predicted_depth, None
+        return forward_da2(model, x), None
 
     return run
 
