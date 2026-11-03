@@ -30,6 +30,7 @@ Nothing has been pushed. Commits are on local `main`.
 | RELLIS data | `~/da3ft-data/rellis` (`Rellis-3D` 45 GB, `raw` 15 GB, `calib` 2.2 MB) |
 | Ground truth caches | `~/da3ft-data/cache/gt` (582 MB), `~/da3ft-data/cache/gt_sensitivity` (574 MB); 13,556 frames each |
 | Prediction cache | `~/da3ft-data/cache/pred/<model>/<seq>/`, val and test for the four zero-shot models (about 3 GB) |
+| Paper material: every number so far, figure data, wording and limitations | [docs/paper-results.md](docs/paper-results.md) |
 | Phase 2 results | `results/phase2/{val,test}/`: `tables.md`, `summary_*.csv`, `meta.json` (committed); `*_per_image.csv.gz` (git-ignored, rebuilt by `scripts/eval.py`) |
 | Overlays (git-ignored, derived from RELLIS images) | `results/overlays/`: Phase 1 overlays and crops, low-agreement panels, edge-band and val grass panels |
 
