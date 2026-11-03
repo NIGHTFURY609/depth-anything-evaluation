@@ -22,3 +22,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+
+# Per-image evaluation rows, rebuilt from the caches by scripts/eval.py
+results/phase2/*/*_per_image.csv.gz

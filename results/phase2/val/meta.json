@@ -1,0 +1,17 @@
+{
+  "split": "val",
+  "git_hash": "5dc8fa2c634b85b4a779fdd1cde6a3e679c5621b-dirty",
+  "models": [
+    "da2_small",
+    "da2_base",
+    "da3_small",
+    "da3_base"
+  ],
+  "gt_sources": [
+    "gt",
+    "gt_sensitivity"
+  ],
+  "config_sha256": "a2ca8142daaeff1bde32c16e4a339573e932f663713f1787933c657908a03a29",
+  "frames": 464,
+  "skipped": []
+}

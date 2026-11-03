@@ -70,3 +70,26 @@ rellis:
     "00002": 4147
     "00003": 2184
     "00004": 2059
+
+# Phase 2 evaluation. Every value is fixed on val before any test number exists; frozen: true
+# (in a clean commit) is required before scripts/eval.py will touch the test split.
+eval:
+  min_depth: 1.0 # val GT: nothing below 3.4 m
+  max_depth: 80.0 # val GT: 0.008% of points beyond
+  min_valid: 200 # pixels needed before any alignment fit
+  min_subset_px: 50 # val GT: edge_depth has a median of 71 px per image; N images is reported
+  edge_k: 4 # columns either side; median spacing along a ring is 2 px
+  edge_tau: 0.2 # depth jump, the same as the occlusion filter's rel_threshold
+  distance_bins: [0, 10, 20, 80] # val GT: 62%, 29%, 9%
+  high_error: 0.25 # per-pixel AbsRel that counts as an error for AUROC
+  auroc_min_class: 20
+  phantom_ratio: 0.8
+  overshoot_ratio: 1.25
+  sparsification_step: 0.05
+  sparsification_max: 0.95
+  sobel_thickness: [3, 5, 9] # Offroad-Nav uses 5 at its own resolution; 5 is primary
+  random_filter_seeds: 10
+  # Block of 30 evaluated frames (about 15 s): val per-image AbsRel stays correlated to lag ~20-30.
+  bootstrap: {block: 30, resamples: 1000, seed: 0}
+  reference_model: da3_small # paired differences are reported against this model
+  frozen: false

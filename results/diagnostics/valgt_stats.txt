@@ -1,0 +1,31 @@
+/home/jeswin/src/Depth-Anything-3/src/depth_anything_3/cfg.py:25: UserWarning: register_new_resolver() is deprecated and will be removed in a future release.
+Use register_resolver() instead.
+See https://github.com/hydra-ecosystem/omegaconf/issues/426 for migration instructions.
+
+  OmegaConf.register_new_resolver("eval", eval)
+[93m[WARN ] Dependency `gsplat` is required for rendering 3DGS. Install via: pip install git+https://github.com/nerfstudio-project/gsplat.git@0b4dddf04cb687367602c01196913cde6a743d70[0m
+val frames used: 232 (every 2nd evaluated frame)
+kept depth percentiles 0.1/1/50/99/99.9: [ 3.37  3.98  8.19 35.12 51.09]
+fraction below 1 m: 0.00000, above 80 m: 0.00008, max 104.4
+   0-10 m: 0.620
+  10-20 m: 0.287
+  20-40 m: 0.088
+  40-80 m: 0.004
+along-row gap between points, percentiles 25/50/75/90: [2. 2. 3. 7.]
+edge share of valid pixels by group, (k, tau):
+  k=4 tau=0.15: grass 0.024  trees_bushes 0.100  ground 0.207  other 0.196  all 0.057
+  k=4 tau=0.20: grass 0.022  trees_bushes 0.068  ground 0.207  other 0.184  all 0.047
+  k=4 tau=0.30: grass 0.021  trees_bushes 0.050  ground 0.207  other 0.175  all 0.042
+  k=6 tau=0.15: grass 0.036  trees_bushes 0.138  ground 0.299  other 0.273  all 0.081
+  k=6 tau=0.20: grass 0.033  trees_bushes 0.093  ground 0.299  other 0.256  all 0.068
+  k=6 tau=0.30: grass 0.032  trees_bushes 0.067  ground 0.299  other 0.244  all 0.060
+  k=8 tau=0.15: grass 0.051  trees_bushes 0.176  ground 0.401  other 0.350  all 0.108
+  k=8 tau=0.20: grass 0.047  trees_bushes 0.118  ground 0.400  other 0.329  all 0.091
+  k=8 tau=0.30: grass 0.045  trees_bushes 0.083  ground 0.400  other 0.314  all 0.081
+pixels per image, percentiles 5/25/50 and share of images with >= 100:
+  all           [4695. 5231. 5732.]  1.00
+  grass         [2128. 3298. 4039.]  1.00
+  trees_bushes  [ 280.  749. 1281.]  1.00
+  ground        [  0.   0. 130.]  0.52
+  other         [ 0.  0. 18.]  0.35
+  vegetation    [4052. 4738. 5242.]  1.00
