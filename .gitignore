@@ -25,3 +25,9 @@ __pycache__/
 
 # Per-image evaluation rows, rebuilt from the caches by scripts/eval.py
 results/phase2/*/*_per_image.csv.gz
+
+zero_shot_offroad_depth_ieee-0.1.pdf
+zero_shot_offroad_depth_ieee-0.1.tex
+How_Well_Do_Zero_Shot_Depth_Anything_Models_Work_Off_Road__A_LiDAR_Evaluation_of_DA2_and_DA3_on_RELLIS_3D.pdf
+main-1.0.tex
+main-1.0.pdf
