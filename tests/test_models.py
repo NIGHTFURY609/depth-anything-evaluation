@@ -202,3 +202,57 @@ def test_checkpointing_same_output(net):
     assert rel_diff(out["depth"].detach(), plain) < 1e-4
     out["depth"].mean().backward()
     assert net.backbone.pretrained.blocks[0].attn.proj.weight.grad is not None
+
+
+def test_train_mode_matches_eval_mode(api):
+    """Dropout and drop-path are 0 upstream, so Phase 3 can use train() without changing the forward."""
+    x = preprocess([noise_image(7)]).to(DEVICE)
+    net = api.model
+    with torch.no_grad():
+        net.eval()
+        a = forward_da3(net, x)
+        net.train()
+        b = forward_da3(net, x)
+        net.eval()
+    assert torch.equal(a["depth"], b["depth"]) and torch.equal(a["conf"], b["conf"])
+
+
+@pytest.mark.parametrize("mode", ["head", "lora"])
+def test_finetuned_checkpoint_round_trip(tmp_path, mode):
+    from src.models import load_finetuned, trainable_state
+
+    cfg = load_config()
+    regex = cfg["lora"]["target_regex"]
+    net = load_da3(HF_ID, DEVICE).model
+    torch.manual_seed(0)
+    set_trainable(net, mode, 8, regex)
+    x = preprocess([noise_image(5)]).to(DEVICE)
+    with torch.no_grad():
+        before = forward_da3(net, x)["depth"]
+        for p in net.parameters():
+            if p.requires_grad:
+                p.add_(torch.randn_like(p) * 0.01)
+        trained = forward_da3(net, x)["depth"]
+    assert not torch.allclose(before, trained)
+    path = tmp_path / "ckpt.pt"
+    meta = {"base_model": "da3_small", "mode": mode, "lora_rank": 8, "lora_regex": regex}
+    torch.save({"state": trainable_state(net), "meta": meta}, path)
+    del net
+    loaded, got = load_finetuned(cfg, path, DEVICE)
+    with torch.no_grad():
+        out = forward_da3(loaded, x)["depth"]
+    assert got == meta
+    assert torch.allclose(out, trained, rtol=1e-5, atol=1e-6)
+
+
+def test_load_trainable_rejects_a_mismatched_state():
+    from src.models import load_trainable, trainable_state
+
+    cfg = load_config()
+    net = load_da3(HF_ID, DEVICE).model
+    set_trainable(net, "head")
+    state = trainable_state(net)
+    lora = load_da3(HF_ID, DEVICE).model
+    set_trainable(lora, "lora", 8, cfg["lora"]["target_regex"])
+    with pytest.raises(ValueError, match="checkpoint mismatch"):
+        load_trainable(lora, state)

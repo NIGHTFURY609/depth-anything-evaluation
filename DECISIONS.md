@@ -259,6 +259,67 @@ All values are in `config.yaml` under `eval:`. They were set from val ground tru
 - Scale-and-shift in inverse depth cuts far-grass AbsRel to 0.19 (LS) or 0.15 (Huber), and the phantom rate to 0.41 or 0.25. Much of the error is therefore a distance-dependent compression that one scale cannot fix. DA3-B (0.18 with `median`) and DA2-S (0.16 with LS) show it less.
 - Phase 3 should check whether fine-tuning removes it or only moves it.
 
+## 2026-11-06: Phase 3 training setup, fixed before any training run
+
+All values are in `config.yaml` under `train:`. The `eval:`, `split:`, `gt:`, `input:` and `models:` sections are unchanged from the freeze at `6b486bc`, and `test_eval_section_matches_freeze` checks that.
+
+**Division of work (the author's choice).** Claude builds and tests the code, caches the teacher and runs the sanity checks. The author runs the long training queue (`scripts/phase3_runs.py`) unattended and hands back `results/phase3/summary.md`. The steps are in [docs/phase3-runbook.md](docs/phase3-runbook.md).
+
+**Selection (the author's choice).** Mean per-image val AbsRel over all valid pixels, with median alignment and official GT, computed by the same functions as the frozen eval (`src/val.py`, checked against `evaluate_frame` in `tests/test_val.py`).
+- It picks both the best epoch (early stopping) and the hyperparameters.
+- Grass, vegetation, `edge_depth` and grass at 20-80 m are logged every epoch but never decide anything.
+- Epoch 0, the untrained model, is logged for reference and is not a candidate.
+- The test sequence is not loaded in Phase 3: `TrainFrames` refuses non-train sequences and `Validator` refuses non-val ones.
+
+**Loss.**
+- `L = L_lidar + lambda_d * L_distill`, as in plan v2 §6.
+- `L_lidar`:
+  - is computed on `keep` & 1-80 m, the eval's valid set;
+  - takes s = median(g/d) per image, detached, with the median interpolated like `np.median`;
+  - is `mean(c*e - lambda_c*log c)` per image, then averaged over images, as eval averages over images.
+- **`lambda_c = 1.0`, fixed, not tuned.** It must stay above the 0.25 high-error threshold (2026-11-02 item 4); a test checks this. The val confidence median and the share at the floor (below 1.05) are logged every epoch.
+- `L_distill` is the L1 between median-normalised student and teacher over all pixels, with medians treated as constants.
+- **Distillation stays linear, not log.** The rule was fixed before running: use log space if, on zero-shot DA3-S val predictions, the farthest 10% of pixels hold more than 0.3 of Σ d/med(d).
+  - They hold 0.187 (median; p10 0.172, p90 0.203). The largest normalised depth is only 2.2 times the median, so DA3-S has no heavy sky tail.
+  - The deferred worry below therefore did not hold (`scripts/diagnostics/distill_space.py`, `results/diagnostics/distill_space.txt`).
+
+**Optimisation.**
+- AdamW with weight decay 0.01.
+- Batch 4, accumulated over 2 steps to an effective 8, with `drop_last`.
+- Warmup over 300 optimiser steps, then cosine to 0 over 20 epochs. The schedule always spans 20 epochs, so a 1-epoch sanity run follows the same schedule as a real run's first epoch.
+- Early stopping with patience 3. Gradient-norm clip 1.0. The backbone runs in bf16 and the head in fp32, as in `forward_da3`.
+- Learning rates: the head always gets `lr_head = 5e-5`, and the LoRA parameters get the run's `lr`. LoRA rank 8 on attention qkv/proj, from `config.yaml`.
+- A non-finite loss stops the run with an error rather than continuing.
+- `train()` mode is used. `test_train_mode_matches_eval_mode` shows it gives the identical forward, as dropout and drop-path are 0 upstream.
+- Each epoch's shuffle, worker seeds and augmentation are seeded from (seed, epoch). Together with the optimiser and scheduler state in `last.pt`, this means a resumed run repeats an uninterrupted one (`test_resume_reproduces_an_uninterrupted_run`, on CPU).
+
+**Data.**
+- All 7,090 train frames with stride 1, minus `drop_last` remainders.
+- Images go through upstream's own resize steps, so with augmentation off a training image equals `preprocess()` exactly (`test_unaugmented_item_matches_preprocess_and_caches`).
+- Colour jitter (brightness, contrast and saturation 0.2, hue 0.02) is applied to the image only, before normalisation.
+- A horizontal flip (p = 0.5) is applied to image, GT, mask and teacher together.
+- The teacher is zero-shot DA3-S, cached by `scripts/infer.py --split train --stride 1` into `pred/da3_small/`, at batch 1, like every other prediction.
+
+**Checkpoints.**
+- `best_val.pt` and `last.pt` live in `~/da3ft-data/checkpoints/<run>/` and hold only the trainable parameters.
+- Their metadata records the base model, mode, LoRA rank and regex, run settings, config SHA-256, git hash and teacher.
+- `load_finetuned` rebuilds the net and refuses a state that does not cover exactly its trainable parameters.
+
+**The queue (`train.stages`).** The tuning budget is lean, at 9 runs:
+- **S1:** LoRA learning rate in {5e-5, 1e-4, 2e-4} at `lambda_d` 0.5.
+- **S2:** `lambda_d` in {0.1, 0.5, 1.0} at S1's best rate. 0.5 is S1's own run, reused.
+- **S3:** head-only at the best `lambda_d`, no-distillation (`lambda_d` 0) at the best rate, and seeds 1 and 2 of the main model.
+
+Plan v2's 3x3 grid is not run. The selection is made by the script and written to `results/phase3/selection.json`.
+
+**Sanity criteria, fixed before running.**
+- Overfit 10 evenly spaced train frames with LoRA at 1e-4 (head 5e-5), no augmentation and no distillation: their AbsRel must be below 0.03 by step 300, and the step-0 and final overlays are viewed.
+- One LoRA epoch at 1e-4 with `lambda_d` 0.5: val AbsRel (all) must fall below the untrained model's val AbsRel, 0.1131 in `results/phase2/val`.
+
+**Small supporting changes.**
+- `scripts/eval.py --out` writes elsewhere than `results/phase2/<split>`, so Phase 3 and 4 never overwrite the Phase 2 tables. No metric code changed.
+- `scripts/infer.py --checkpoint --name` caches a fine-tuned model's predictions under `pred/<name>/`, with model ID `<base>+<name>@<checkpoint sha256[:12]>`.
+
 ## 2026-11-02: working rules
 
 - Never touch WSL distro `Ubuntu-26.04` or change `.wslconfig`.
@@ -270,7 +331,7 @@ All values are in `config.yaml` under `eval:`. They were set from val ground tru
 
 ## Deferred to later phases
 
-- Phase 3: the distillation L1 on median-normalised linear depth is likely to be dominated by far and sky pixels, as DA3-Small has no sky clamp. Log-space is the probable fix. Check on validation.
+- ~~Phase 3: the distillation L1 on median-normalised linear depth is likely to be dominated by far and sky pixels.~~ Checked 2026-11-06 on val: it is not (far-10% share 0.187), so distillation stays linear. See the Phase 3 entry.
 - Phase 3: fine-tuning changes what confidence targets, from L1 on normalised depth to relative error. Say so when comparing confidence before and after.
 - Optional: whether DA3Mono-Large returns `conf`. Not checked, as the model is optional.
 - Code issues and other open items are listed in [PROGRESS.md](PROGRESS.md).

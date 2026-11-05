@@ -1,8 +1,13 @@
-"""Caches zero-shot predictions for a split, and writes the evaluated frame list."""
+"""Caches predictions for a split, and writes the evaluated frame list.
+
+Zero-shot models by config key, or a fine-tuned checkpoint under its own name:
+    python scripts/infer.py --split val --checkpoint ~/da3ft-data/checkpoints/<run>/best_val.pt --name <run>
+"""
 
 import argparse
 import csv
 import gc
+import hashlib
 import sys
 from pathlib import Path
 
@@ -29,7 +34,11 @@ def main() -> None:
     parser.add_argument("--split", choices=["train", "val", "test"], required=True)
     parser.add_argument("--models", nargs="+", default=MODELS, choices=MODELS)
     parser.add_argument("--stride", type=int, help="defaults to split.eval_stride")
+    parser.add_argument("--checkpoint", help="a Phase 3 checkpoint; predictions go to pred/<name>/")
+    parser.add_argument("--name", help="cache name for --checkpoint; must not be a config model key")
     args = parser.parse_args()
+    if args.checkpoint and (not args.name or args.name in MODELS):
+        parser.error("--checkpoint needs a --name that is not a zero-shot model key")
 
     cfg = load_config()
     set_seed(cfg["seed"])
@@ -37,10 +46,16 @@ def main() -> None:
     frames = eval_frames(cfg, args.split, args.stride)
     if args.split != "train":
         write_frame_list(frames, Path(cfg["paths"]["results_root"]) / "phase2" / f"frames_{args.split}.csv")
-    for key in args.models:
-        run, kind = load_runner(cfg, key, "cuda")
+    if args.checkpoint:
+        sha = hashlib.sha256(Path(args.checkpoint).expanduser().read_bytes()).hexdigest()[:12]
+        base = cfg["models"][cfg["train"]["base_model"]]
+        jobs = [(args.name, f"{base}+{args.name}@{sha}", Path(args.checkpoint).expanduser())]
+    else:
+        jobs = [(key, cfg["models"][key], None) for key in args.models]
+    for key, model_id, checkpoint in jobs:
+        run, kind = load_runner(cfg, key, "cuda", checkpoint)
         paths = write_predictions(
-            run, frames, cfg["paths"]["cache_root"], key, cfg["models"][key], kind, commit,
+            run, frames, cfg["paths"]["cache_root"], key, model_id, kind, commit,
             cfg["input"]["process_res"],
         )
         print(f"{key}: {len(paths)} frames of {args.split} cached ({kind})", flush=True)

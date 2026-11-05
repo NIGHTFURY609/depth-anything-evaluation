@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from src.gt import frame_path
-from src.models import forward_da2, forward_da3, load_da2, load_da3, preprocess
+from src.models import forward_da2, forward_da3, load_da2, load_da3, load_finetuned, preprocess
 from src.rellis import Frame, list_frames
 
 # Batch 1 throughout: bf16 results can shift slightly with batch size, and Phase 4 must match.
@@ -26,8 +26,19 @@ def eval_frames(cfg: dict, split: str, stride: int | None = None) -> list[Frame]
     return frames
 
 
-def load_runner(cfg: dict, model_key: str, device: str):
-    """Returns run(x) -> (pred, conf or None), and the kind of pred: depth or disparity."""
+def load_runner(cfg: dict, model_key: str, device: str, checkpoint=None):
+    """Returns run(x) -> (pred, conf or None), and the kind of pred: depth or disparity.
+
+    With a checkpoint, model_key is ignored and the fine-tuned DA3 is loaded instead.
+    """
+    if checkpoint is not None:
+        net, _ = load_finetuned(cfg, checkpoint, device)
+
+        def run(x):
+            out = forward_da3(net, x)
+            return out["depth"], out["conf"]
+
+        return run, "depth"
     hf_id = cfg["models"][model_key]
     if model_key.startswith("da3"):
         net = load_da3(hf_id, device).model

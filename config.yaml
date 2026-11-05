@@ -3,6 +3,7 @@ paths:
   data_root: ~/da3ft-data/rellis
   cache_root: ~/da3ft-data/cache
   results_root: results
+  checkpoint_root: ~/da3ft-data/checkpoints
 
 upstream:
   da3_commit: 3d835ec1a5802d64a8b8b15f817a1ab54809bfe4
@@ -97,3 +98,44 @@ eval:
   bootstrap: {block: 30, resamples: 1000, seed: 0}
   reference_model: da3_small # paired differences are reported against this model
   frozen: true # 2026-11-03, before any test number
+
+# Phase 3 fine-tuning. Fixed 2026-11-06 before any training run; see DECISIONS.md. Selection uses
+# val only: mean per-image AbsRel over all valid pixels, median alignment, official GT.
+train:
+  base_model: da3_small
+  teacher: pred/da3_small # cached by scripts/infer.py --split train --stride 1
+  batch: 4
+  accumulate: 2 # effective batch 8
+  num_workers: 6
+  epochs: 20 # also the length of the cosine schedule
+  patience: 3
+  warmup_steps: 300 # optimiser steps
+  weight_decay: 0.01
+  grad_clip: 1.0
+  lr_head: 5.0e-5 # the head's rate in every mode; a run's lr is for the LoRA parameters
+  lambda_c: 1.0 # not in the DA3 paper; must stay above eval.high_error
+  distill_space: linear # scripts/diagnostics/distill_space.py: far-10% share 0.187 < 0.3
+  flip_p: 0.5
+  jitter: {brightness: 0.2, contrast: 0.2, saturation: 0.2, hue: 0.02}
+  selection: absrel_all
+  # Run by scripts/phase3_runs.py in order. "best" takes the value of the best run selected so far.
+  stages:
+    - name: S1 # LoRA learning rate
+      select: true
+      runs:
+        - {mode: lora, lr: 5.0e-5, lambda_d: 0.5}
+        - {mode: lora, lr: 1.0e-4, lambda_d: 0.5}
+        - {mode: lora, lr: 2.0e-4, lambda_d: 0.5}
+    - name: S2 # distillation weight; 0.5 reuses its S1 run
+      select: true
+      runs:
+        - {mode: lora, lr: best, lambda_d: 0.1}
+        - {mode: lora, lr: best, lambda_d: 0.5}
+        - {mode: lora, lr: best, lambda_d: 1.0}
+    - name: S3 # head-only, no-distillation ablation, extra seeds of the main model
+      select: false
+      runs:
+        - {mode: head, lambda_d: best}
+        - {mode: lora, lr: best, lambda_d: 0.0}
+        - {mode: lora, lr: best, lambda_d: best, seed: 1}
+        - {mode: lora, lr: best, lambda_d: best, seed: 2}

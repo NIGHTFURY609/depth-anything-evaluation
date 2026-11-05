@@ -31,3 +31,43 @@ def test_set_seed_repeatable():
     first = torch.rand(4)
     set_seed(123)
     assert torch.equal(first, torch.rand(4))
+
+
+FREEZE_COMMIT = "6b486bc"
+
+
+def test_eval_section_matches_freeze():
+    """Phase 3 may add to config.yaml, but the evaluation protocol frozen at 6b486bc must not move."""
+    import subprocess
+
+    import yaml
+
+    frozen = subprocess.run(["git", "show", f"{FREEZE_COMMIT}:config.yaml"], capture_output=True,
+                            text=True, check=True).stdout
+    frozen = yaml.safe_load(frozen)
+    cfg = load_config()
+    for section in ("eval", "split", "gt", "input", "models"):
+        assert cfg[section] == frozen[section], section
+
+
+def test_lambda_c_above_high_error_threshold():
+    """c >= 1 and the optimum is lambda_c / e, so errors above lambda_c all sit at the floor."""
+    cfg = load_config()
+    assert cfg["train"]["lambda_c"] > cfg["eval"]["high_error"]
+
+
+def test_git_hash_can_ignore_paths(tmp_path, monkeypatch):
+    import subprocess
+
+    from src.config import git_hash
+
+    monkeypatch.chdir(tmp_path)
+    run = lambda *a: subprocess.run(["git", *a], check=True, capture_output=True)
+    run("init", "-q")
+    run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x")
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "a.csv").write_text("1")
+    assert git_hash().endswith("-dirty")
+    assert not git_hash(ignore=("logs",)).endswith("-dirty")
+    (tmp_path / "code.py").write_text("1")
+    assert git_hash(ignore=("logs",)).endswith("-dirty")

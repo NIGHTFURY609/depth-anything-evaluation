@@ -221,6 +221,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=["val", "test"], required=True)
     parser.add_argument("--models", nargs="+", help="names under pred/; defaults to config models")
+    parser.add_argument("--out", help="output directory; defaults to results/phase2/<split>")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -230,7 +231,7 @@ def main() -> None:
     check_can_evaluate(args.split, ecfg["frozen"], commit.endswith("-dirty"))
 
     data, n_frames, provenance = run(cfg, args.split, models, GT_SOURCES)
-    out_dir = Path(cfg["paths"]["results_root"]) / "phase2" / args.split
+    out_dir = Path(args.out) if args.out else Path(cfg["paths"]["results_root"]) / "phase2" / args.split
     out_dir.mkdir(parents=True, exist_ok=True)
     for name in ("accuracy", "confidence", "filtering"):
         data[name].to_csv(out_dir / f"{name}_per_image.csv.gz", index=False)

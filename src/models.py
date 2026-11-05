@@ -75,6 +75,30 @@ def set_trainable(
         net.backbone.requires_grad_(True)
 
 
+def trainable_state(net: torch.nn.Module) -> dict[str, torch.Tensor]:
+    """Only the trained parameters: the rest are the unchanged pretrained weights."""
+    return {n: p.detach().cpu().clone() for n, p in net.named_parameters() if p.requires_grad}
+
+
+def load_trainable(net: torch.nn.Module, state: dict[str, torch.Tensor]) -> None:
+    """Loads a trainable_state, failing unless it covers exactly the net's trainable parameters."""
+    expected = {n for n, p in net.named_parameters() if p.requires_grad}
+    missing, unexpected = expected - set(state), set(state) - expected
+    if missing or unexpected:
+        raise ValueError(f"checkpoint mismatch: missing {sorted(missing)[:5]}, unexpected {sorted(unexpected)[:5]}")
+    net.load_state_dict(state, strict=False)
+
+
+def load_finetuned(cfg: dict, ckpt_path, device: str) -> tuple[DepthAnything3Net, dict]:
+    """Base model, the run's trainable setup, then its saved parameters. Returns (net, meta)."""
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    meta = ckpt["meta"]
+    net = load_da3(cfg["models"][meta["base_model"]], device).model
+    set_trainable(net, meta["mode"], meta["lora_rank"], meta["lora_regex"])
+    load_trainable(net, ckpt["state"])
+    return net.eval(), meta
+
+
 def enable_checkpointing(net: DepthAnything3Net) -> None:
     """Upstream's ViT has no gradient checkpointing, so wrap each block's forward."""
 

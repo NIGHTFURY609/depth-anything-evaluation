@@ -1,0 +1,5 @@
+val frames: 464
+share of sum(r) in farthest 10% of pixels: median 0.187, p10 0.172, p90 0.203
+r at the 90th percentile: median 1.81; max r: median 2.2, p90 2.7
+rule: log space if median share > 0.3
+decision: linear
