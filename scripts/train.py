@@ -32,6 +32,16 @@ from src.train_data import TrainFrames, load_resized
 from src.val import Validator, frame_masks, frame_metrics, mean_metrics
 
 DEVICE = "cuda"
+# A run resumes only if these files are byte-identical to when it started.
+CODE_FILES = ["src/losses.py", "src/train.py", "src/train_data.py", "src/val.py", "src/models.py",
+              "src/eval.py", "scripts/train.py"]
+
+
+def code_sha256() -> str:
+    h = hashlib.sha256()
+    for path in CODE_FILES:
+        h.update(Path(path).read_bytes())
+    return h.hexdigest()
 
 
 def build_net(cfg: dict, mode: str, seed: int):
@@ -48,7 +58,7 @@ def loader(ds, tcfg: dict, generator, shuffle: bool = True, workers: int | None 
 
 
 def train_run(cfg: dict, args) -> dict:
-    tcfg = cfg["train"]
+    tcfg = {**cfg["train"], "min_valid": cfg["eval"]["min_valid"]}
     spec = {"mode": args.mode, "lambda_d": args.lambda_d, "seed": args.seed}
     if args.mode != "head":
         spec["lr"] = args.lr
@@ -63,17 +73,23 @@ def train_run(cfg: dict, args) -> dict:
     if args.limit_val:
         val_frames = val_frames[: args.limit_val]
     validator = Validator(cfg, val_frames)
+    steps = len(ds) // tcfg["batch"]
     meta = {
         "base_model": tcfg["base_model"], "lora_rank": cfg["lora"]["rank"], "lora_regex": cfg["lora"]["target_regex"],
-        "config_sha256": hashlib.sha256(Path("config.yaml").read_bytes()).hexdigest(), "git_hash": git_hash(ignore=("results/phase3", "runs")),  # the queue's own logs
-        "teacher": tcfg["teacher"], "n_train": len(ds), "n_val": len(validator.items),
+        "git_hash": git_hash(ignore=("results/phase3", "runs")),  # the queue's own logs don't count
+        "teacher": tcfg["teacher"],
+        "fingerprint": {
+            "config_sha256": hashlib.sha256(Path("config.yaml").read_bytes()).hexdigest(),
+            "code_sha256": code_sha256(), "n_train": len(ds), "n_val": len(validator.items),
+            "steps_per_epoch": steps,
+        },
     }
     out_root = Path(args.out_root or Path(cfg["paths"]["results_root"]) / "phase3" / "runs")
     ckpt_root = Path(args.ckpt_root or cfg["paths"]["checkpoint_root"])
     result = fit(
         net, forward_da3, lambda epoch, gen: loader(ds, tcfg, gen), lambda n: validator(n, DEVICE), spec, tcfg,
         out_dir=out_root / spec["name"], ckpt_dir=ckpt_root / spec["name"], meta=meta, device=DEVICE,
-        steps_per_epoch=len(ds) // tcfg["batch"], max_epochs=args.epochs, tb_dir=Path("runs") / spec["name"],
+        steps_per_epoch=steps, max_epochs=args.epochs, tb_dir=Path(args.tb_root or "runs") / spec["name"],
         log=lambda msg: print(msg, flush=True),
     )
     print(json.dumps({"name": spec["name"], **result}), flush=True)
@@ -87,9 +103,9 @@ def _colour(depth, lo=1.0, hi=40.0):
     return cv2.applyColorMap((255 - t * 255).astype(np.uint8), cv2.COLORMAP_TURBO)
 
 
-def overlay(frame, pred, gt, masks, ecfg, path: Path) -> None:
+def overlay(frame, pred, gt, masks, ecfg, path: Path, process_res: int) -> None:
     """RGB | aligned prediction, and the same prediction with LiDAR dots | per-point relative error."""
-    rgb = load_resized(str(frame.image), 504)[..., ::-1].copy()
+    rgb = load_resized(str(frame.image), process_res)[..., ::-1].copy()
     aligned, _ = align(pred, "depth", gt, masks["valid"], "median", ecfg["min_depth"], ecfg["max_depth"])
     pred_img = _colour(aligned)
     dots = pred_img.copy()
@@ -113,13 +129,17 @@ def overfit(cfg: dict, args) -> None:
     net = build_net(cfg, "lora", 0)
     frames = eval_frames(cfg, "train", stride=1)
     frames = frames[:: len(frames) // args.overfit][: args.overfit]
-    ds = TrainFrames(cfg, frames, augment=False)
-    gts, masks = [], []
+    gts, masks, kept = [], [], []
     for f in frames:
         with np.load(frame_path(cfg["paths"]["cache_root"], f.seq, f.frame)) as g:
             gt = dict(g)
-        gts.append(gt["depth"])
-        masks.append(frame_masks(gt, ecfg))
+        m = frame_masks(gt, ecfg)
+        if m is not None:  # eval would skip it
+            gts.append(gt["depth"])
+            masks.append(m)
+            kept.append(f)
+    frames = kept
+    ds = TrainFrames(cfg, frames, augment=False)
     optimizer = torch.optim.AdamW(param_groups(net, args.lr, tcfg["lr_head"]), weight_decay=tcfg["weight_decay"])
     out_dir = Path(cfg["paths"]["results_root"]) / "overlays" / "phase3_overfit"
 
@@ -132,20 +152,21 @@ def overfit(cfg: dict, args) -> None:
             pred = out["depth"][0].float().cpu().numpy()
             rows.append(frame_metrics(pred, out["conf"][0].float().cpu().numpy(), gts[i], masks[i], ecfg))
             if i == 0 and step in (0, args.steps):
-                overlay(frames[0], pred, gts[0], masks[0], ecfg, out_dir / f"{frames[0].seq}_{frames[0].frame:06d}_step{step}.png")
+                overlay(frames[0], pred, gts[0], masks[0], ecfg,
+                        out_dir / f"{frames[0].seq}_{frames[0].frame:06d}_step{step}.png", cfg["input"]["process_res"])
         net.train()
         m = mean_metrics(rows)
         print(f"overfit step {step}: absrel_all {m['absrel_all']:.4f} conf_median {m['conf_median']:.2f}", flush=True)
         return m
 
-    score(0)
+    m = score(0)
     step = 0
     gen = torch.Generator().manual_seed(0)
     while step < args.steps:
         for batch in loader(ds, tcfg, gen, workers=2):
             out = forward_da3(net, batch["image"].to(DEVICE))
             loss, _ = lidar_loss(out["depth"], out["conf"], batch["gt"].to(DEVICE), batch["mask"].to(DEVICE),
-                                 tcfg["lambda_c"])
+                                 tcfg["lambda_c"], cfg["eval"]["min_valid"])
             loss.backward()
             torch.nn.utils.clip_grad_norm_([p for p in net.parameters() if p.requires_grad], tcfg["grad_clip"])
             optimizer.step()
@@ -170,9 +191,14 @@ def main() -> None:
     parser.add_argument("--limit-val", type=int, help="debug: use the first this many val frames")
     parser.add_argument("--out-root", help="debug: log directory root instead of results/phase3/runs")
     parser.add_argument("--ckpt-root", help="debug: checkpoint root instead of paths.checkpoint_root")
+    parser.add_argument("--tb-root", help="debug: TensorBoard root instead of runs/")
     parser.add_argument("--overfit", type=int, help="run the overfit check on this many train frames")
     parser.add_argument("--steps", type=int, default=300)
     args = parser.parse_args()
+    if bool(args.out_root) != bool(args.ckpt_root):
+        parser.error("give --out-root and --ckpt-root together, so debug runs never mix with real ones")
+    if (args.limit_train or args.limit_val or args.epochs) and not args.out_root:
+        parser.error("--limit-train, --limit-val and --epochs are for checks: also give --out-root and --ckpt-root")
     cfg = load_config()
     if args.overfit:
         overfit(cfg, args)

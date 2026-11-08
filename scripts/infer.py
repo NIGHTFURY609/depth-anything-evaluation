@@ -11,6 +11,7 @@ import hashlib
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -39,6 +40,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.checkpoint and (not args.name or args.name in MODELS):
         parser.error("--checkpoint needs a --name that is not a zero-shot model key")
+    if args.name and not args.checkpoint:
+        parser.error("--name is only for --checkpoint")
 
     cfg = load_config()
     set_seed(cfg["seed"])
@@ -49,7 +52,13 @@ def main() -> None:
     if args.checkpoint:
         sha = hashlib.sha256(Path(args.checkpoint).expanduser().read_bytes()).hexdigest()[:12]
         base = cfg["models"][cfg["train"]["base_model"]]
-        jobs = [(args.name, f"{base}+{args.name}@{sha}", Path(args.checkpoint).expanduser())]
+        model_id = f"{base}+{args.name}@{sha}"
+        existing = sorted((Path(cfg["paths"]["cache_root"]) / "pred" / args.name).rglob("*.npz"))
+        if existing:
+            with np.load(existing[0]) as p:
+                if str(p["model_id"]) != model_id:
+                    sys.exit(f"pred/{args.name} holds {p['model_id']}, not {model_id}: pick another --name")
+        jobs = [(args.name, model_id, Path(args.checkpoint).expanduser())]
     else:
         jobs = [(key, cfg["models"][key], None) for key in args.models]
     for key, model_id, checkpoint in jobs:

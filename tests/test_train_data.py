@@ -90,3 +90,21 @@ def test_refuses_val_and_test_frames(tmp_path, seq):
     frame = Frame(seq, 0, Path("x.jpg"), Path("s"), Path("l"), None)
     with pytest.raises(ValueError, match="not a train sequence"):
         TrainFrames(fake_cfg(tmp_path), [frame])
+
+
+def test_loader_with_workers_repeats_for_the_same_seed_and_epoch(tmp_path):
+    """Resume relies on (seed, epoch) fixing the shuffle, the flips and the jitter in workers."""
+    from torch.utils.data import DataLoader
+
+    frames = [fake_frame(tmp_path, number=n) for n in range(6)]
+    cfg = fake_cfg(tmp_path)
+    cfg["train"]["flip_p"] = 0.5
+    ds = TrainFrames(cfg, frames, augment=True)
+
+    def epoch(seed):
+        loader = DataLoader(ds, batch_size=2, shuffle=True, num_workers=2,
+                            generator=torch.Generator().manual_seed(seed))
+        return [(b["index"].tolist(), b["image"].sum().item(), b["gt"].sum().item()) for b in loader]
+
+    assert epoch(1001) == epoch(1001)
+    assert epoch(1001) != epoch(1002)

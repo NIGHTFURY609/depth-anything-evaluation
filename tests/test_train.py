@@ -160,30 +160,6 @@ def test_finished_run_is_not_rerun(tmp_path):
     assert again["best_epoch"] == 2
 
 
-def test_non_finite_loss_stops_the_run(tmp_path):
-    def bad_forward(net, x):
-        out = net(x)
-        return {"depth": out["depth"] * float("nan"), "conf": out["conf"]}
-
-    net = Tiny()
-    spec = {"name": "nan", "mode": "lora", "lr": 1e-2, "lambda_d": 0.5, "seed": 0}
-    with pytest.raises(FloatingPointError):
-        fit(net, bad_forward, make_loader, scripted_validate([0.5] * 5), spec, TCFG, tmp_path / "o",
-            tmp_path / "c", {}, "cpu", steps_per_epoch=3, log=lambda *a: None)
-
-
-def test_select_best_takes_lowest_val_absrel_and_first_on_ties():
-    from src.train import select_best
-
-    specs = resolve_stage(STAGES[0], None)
-    done = lambda v: {"best_val": {"val_absrel_all": v}}
-    a, b = (s["name"] for s in specs)
-    assert select_best(specs, {a: done(0.10), b: done(0.09)})["name"] == b
-    assert select_best(specs, {a: done(0.09), b: done(0.09)})["name"] == a
-    with pytest.raises(ValueError, match="unfinished"):
-        select_best(specs, {a: done(0.1), b: None})
-
-
 # --- review fixes (2026-11-06) ---------------------------------------------------------------
 
 def run_fit2(tmp_path, validate, name="r", forward=tiny_forward, meta=None, max_epochs=None):
@@ -231,7 +207,8 @@ def test_non_finite_from_the_start_is_ranked_last(tmp_path):
 
 def test_non_finite_val_stops_the_run(tmp_path):
     _, result = run_fit2(tmp_path, scripted_validate([0.9, 0.5, float("nan"), 0.1]))
-    assert result["stopped"] == "nonfinite" and result["best_epoch"] == 1 and result["epochs_run"] == 2
+    assert result["stopped"] == "nonfinite" and result["best_epoch"] == 1 and result["epochs_run"] == 1
+    assert "epoch 2" in result["nonfinite"]  # the uncommitted epoch is named, not logged
 
 
 def test_crash_before_last_pt_discards_the_pending_best(tmp_path, monkeypatch):

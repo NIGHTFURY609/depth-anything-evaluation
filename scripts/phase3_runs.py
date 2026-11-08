@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                         help="debug: further arguments for scripts/train.py, e.g. --extra --limit-train 40")
     args = parser.parse_args()
+    if bool(args.out_root) != bool(args.ckpt_root):
+        parser.error("give --out-root and --ckpt-root together")
 
     cfg = load_config(str(ROOT / "config.yaml"))
     if args.out_root:  # dry runs keep their queue log and selection beside their run logs
@@ -83,20 +85,23 @@ def main() -> None:
             if args.ckpt_root:
                 cmd += ["--ckpt-root", args.ckpt_root]
             cmd += args.extra
-            log(f"{stage['name']} {spec['name']}: start")
             start = time.time()
-            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            tail = []
-            for line in proc.stdout:
-                line = line.rstrip()
-                tail = (tail + [line])[-40:]
-                if line.startswith(spec["name"]) or line.startswith("{") or "Error" in line or "Traceback" in line:
-                    log(line)
-            if proc.wait() != 0:
-                log(f"{spec['name']}: FAILED (exit {proc.returncode}). Last output:")
+            for attempt in (1, 2):  # a transient failure (killed worker, CUDA error) gets one resume
+                log(f"{stage['name']} {spec['name']}: {'start' if attempt == 1 else 'retrying (resumes)'}")
+                proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                tail = []
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    tail = (tail + [line])[-40:]
+                    if line.startswith(spec["name"]) or line.startswith("{") or "Error" in line or "Traceback" in line:
+                        log(line)
+                if proc.wait() == 0:
+                    break
+                log(f"{spec['name']}: FAILED (exit {proc.returncode}, attempt {attempt}). Last output:")
                 for line in tail:
                     log("  " + line)
-                log("Rerun the same command to resume it; send the lines above to Claude if it fails again.")
+            else:
+                log("Stopped after two failures of the same run. Send the lines above to Claude.")
                 sys.exit(1)
             log(f"{stage['name']} {spec['name']}: finished in {(time.time() - start) / 3600:.2f} h")
 

@@ -32,17 +32,16 @@ def test_lidar_loss_matches_hand_computation():
     assert math.isclose(stats["absrel"], e.mean().item(), rel_tol=1e-5)
 
 
-def test_scale_is_detached():
-    """The gradient is that of c*|s*d - g|/g with s held fixed."""
-    depth, conf, gt, mask = batch(b=1)
+def test_lidar_gradient_has_no_component_along_scale():
+    """The overfit check diverged because a detached scale pushes the overall depth scale down
+    every step (DECISIONS.md, 2026-11-06). The loss is invariant to scale, so its gradient must
+    be too: d/dk L(k*d) at k=1 is sum(grad * d) = 0."""
+    depth, conf, gt, mask = batch(b=2)
     depth.requires_grad_(True)
     loss, _ = lidar_loss(depth, conf, gt, mask, 1.0)
     loss.backward()
-    with torch.no_grad():
-        s = torch.quantile(gt[mask] / depth[mask], 0.5)
-        expected = torch.zeros_like(depth)
-        expected[mask] = conf[mask] * s * torch.sign(s * depth[mask] - gt[mask]) / gt[mask] / mask.sum()
-    assert torch.allclose(depth.grad, expected, atol=1e-6)
+    along_scale = (depth.grad * depth.detach()).sum().item()
+    assert abs(along_scale) < 1e-5 * depth.grad.abs().sum().item()
 
 
 def test_masked_pixels_have_no_effect():
@@ -110,10 +109,8 @@ def test_distill_values():
         distill_loss(student, teacher, "sqrt")
 
 
-def test_distill_gradient_treats_medians_as_constants():
-    teacher = torch.tensor([[[1.0, 2.0, 4.0]]])
-    student = torch.tensor([[[1.0, 3.0, 5.0]]], requires_grad=True)
+def test_distill_gradient_has_no_component_along_scale():
+    teacher = torch.tensor([[[1.0, 2.0, 4.0, 3.0, 5.0]]])
+    student = torch.tensor([[[1.0, 3.0, 5.0, 2.0, 2.5]]], requires_grad=True)
     distill_loss(student, teacher, "linear").backward()
-    # median 3, so d/dx |x/3 - t/2| / 3 = sign(...) / 9
-    expected = torch.tensor([[[1.0, 1.0, 1.0]]]) / 9 * torch.sign(student.detach() / 3 - teacher / 2)
-    assert torch.allclose(student.grad, expected)
+    assert abs((student.grad * student.detach()).sum().item()) < 1e-6
