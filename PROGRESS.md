@@ -2,7 +2,7 @@
 
 Where the project stands, what has been done and what is still open. The reasoning behind each choice is in [DECISIONS.md](DECISIONS.md). Update both at the end of every phase.
 
-Last updated: 2026-11-03.
+Last updated: 2026-11-08.
 
 ## Status
 
@@ -11,7 +11,7 @@ Last updated: 2026-11-03.
 | 0: environment, checks, novelty search | Done | Everything fits in 8 GB; no near-duplicate found in a limited search |
 | 1: loader, projection, split, ground truth | Done, gate passed for gross geometry | Ground truth cached for all 13,556 frames; a calibration offset remains and is disclosed |
 | 2: zero-shot baselines, `eval.py` | Done | Protocol frozen at `6b486bc`, test evaluated once. Tables 1, 3 and 4 (zero-shot) in `results/phase2/test/tables.md` |
-| 3: fine-tuning | **Next, not started** | |
+| 3: fine-tuning | **In progress: the author is running the training queue** (started 2026-11-08) | Code, teacher cache and review done; a scale-collapse bug was found and fixed; the overfit check missed its bar (0.049 against 0.03). See the Phase 3 log |
 | 4 onward | Not started | |
 
 Nothing has been pushed. Commits are on local `main`.
@@ -169,10 +169,24 @@ The first three fixes went test-first, red then green.
 - **N:** 57 GB free, against the plan's 50 GB margin. Once the author is happy with Phase 1, the 11.6 GB images zip in the repo root and the 15 GB `raw/` folder can be deleted. Neither has been deleted.
 - **C:** 10.3 GB free, down from 14.9 GB at the start, so the Phase 0 goal of leaving C: unchanged was not met. It dipped to 6.8 GB during the work. The WSL swap file is only 0.04 GB and no large new files turned up in the folders scanned. The Windows pagefile is suspected but unproven.
 
-## Next: Phase 3
+## Phase 3 log
 
-1. Cache teacher outputs for the train sequences: `python scripts/infer.py --split train --stride 1 --models da3_small`, about 7,090 frames.
-2. Write `train.py` with the confidence-weighted, scale-aligned LiDAR loss and the distillation loss. Run the sanity checks (overfit 10 images, judged on AbsRel; one epoch).
-3. Train head-only, LoRA (main) and no-distillation models. Tune `lambda_d`, `lambda_c` and the learning rate on val only.
-4. Check on val whether fine-tuning removes the far-grass compression or only moves it.
-5. Phase 4 evaluates the checkpoints by caching their predictions under `pred/<name>/` and running the frozen `scripts/eval.py` unchanged.
+Settings, the review, the bug and the sanity outcomes are in DECISIONS.md (2026-11-06 entries).
+
+- **Teacher cached:** `pred/da3_small/` for all 7,090 train frames, 27 min, 5.7 GB.
+- **Distillation space:** linear, by the pre-fixed rule (far-10% share 0.187 < 0.3).
+- **Code:** `src/losses.py`, `src/train_data.py`, `src/val.py`, `src/train.py`, `scripts/train.py`, `scripts/phase3_runs.py` and `scripts/phase3_summary.py`. Also `scripts/infer.py --checkpoint/--name` and `scripts/eval.py --out`. 201 tests pass (2026-11-06).
+- **Validator check:** on the untrained model it reproduces Phase 2's zero-shot val numbers exactly: AbsRel all 0.113095, grass 0.075511, vegetation 0.115414, `edge_depth` 0.372562, grass 20-80 m 0.297053, with the same image counts.
+- **Independent review:** six real bugs, all fixed with tests.
+- **Overfit check:**
+  - It found a real bug: the detached scale made depth collapse to NaN. Fixed.
+  - It then missed its bar, 0.049 against 0.03, explained by the confidence-weighted loss form. Overlays OK.
+  - Not rerun or relaxed.
+- **One-epoch check:** not run separately. Epoch 1 of the first S1 run stands in for it (bar: val AbsRel below 0.1131).
+- **Queue:** committed at `32272ce`, started by the author on 2026-11-08 at 11:52 (an attempt at 11:48 was restarted before finishing an epoch). Epoch 0 gives val AbsRel 0.1131, matching Phase 2.
+
+### Next
+
+1. The author finishes the queue (`docs/phase3-runbook.md`), runs `scripts/phase3_summary.py`, commits `results/phase3/`, and hands back with "Phase 3 runs finished. Read results/phase3/summary.md."
+2. Claude checks the summary against the logs and caches val predictions for the selected checkpoints. Then it runs `scripts/eval.py --split val --out results/phase3/val`, and checks on val whether fine-tuning removes the far-grass compression or only moves it.
+3. In Phase 4, Claude runs the frozen `scripts/eval.py` on test for the checkpoints, with `--out` so the Phase 2 tables stay as they are.

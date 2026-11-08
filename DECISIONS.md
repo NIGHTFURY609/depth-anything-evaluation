@@ -275,10 +275,10 @@ All values are in `config.yaml` under `train:`. The `eval:`, `split:`, `gt:`, `i
 - `L = L_lidar + lambda_d * L_distill`, as in plan v2 §6.
 - `L_lidar`:
   - is computed on `keep` & 1-80 m, the eval's valid set;
-  - takes s = median(g/d) per image, detached, with the median interpolated like `np.median`;
+  - takes s = median(g/d) per image, with the median interpolated like `np.median`. **s is not detached**, contrary to plan v2 and to the first version of this entry: see the sanity-check entry below;
   - is `mean(c*e - lambda_c*log c)` per image, then averaged over images, as eval averages over images.
 - **`lambda_c = 1.0`, fixed, not tuned.** It must stay above the 0.25 high-error threshold (2026-11-02 item 4); a test checks this. The val confidence median and the share at the floor (below 1.05) are logged every epoch.
-- `L_distill` is the L1 between median-normalised student and teacher over all pixels, with medians treated as constants.
+- `L_distill` is the L1 between median-normalised student and teacher over all pixels. The teacher's median is a constant; the student's stays in the graph, for the same reason as s.
 - **Distillation stays linear, not log.** The rule was fixed before running: use log space if, on zero-shot DA3-S val predictions, the farthest 10% of pixels hold more than 0.3 of Σ d/med(d).
   - They hold 0.187 (median; p10 0.172, p90 0.203). The largest normalised depth is only 2.2 times the median, so DA3-S has no heavy sky tail.
   - The deferred worry below therefore did not hold (`scripts/diagnostics/distill_space.py`, `results/diagnostics/distill_space.txt`).
@@ -289,7 +289,7 @@ All values are in `config.yaml` under `train:`. The `eval:`, `split:`, `gt:`, `i
 - Warmup over 300 optimiser steps, then cosine to 0 over 20 epochs. The schedule always spans 20 epochs, so a 1-epoch sanity run follows the same schedule as a real run's first epoch.
 - Early stopping with patience 3. Gradient-norm clip 1.0. The backbone runs in bf16 and the head in fp32, as in `forward_da3`.
 - Learning rates: the head always gets `lr_head = 5e-5`, and the LoRA parameters get the run's `lr`. LoRA rank 8 on attention qkv/proj, from `config.yaml`.
-- A non-finite loss stops the run with an error rather than continuing.
+- A non-finite loss or val metric ends the run, recorded as `stopped: nonfinite` with its best epoch so far (or none, ranked last), and the queue moves on. Resume is deterministic, so retrying would only diverge again.
 - `train()` mode is used. `test_train_mode_matches_eval_mode` shows it gives the identical forward, as dropout and drop-path are 0 upstream.
 - Each epoch's shuffle, worker seeds and augmentation are seeded from (seed, epoch). Together with the optimiser and scheduler state in `last.pt`, this means a resumed run repeats an uninterrupted one (`test_resume_reproduces_an_uninterrupted_run`, on CPU).
 
@@ -315,6 +315,36 @@ Plan v2's 3x3 grid is not run. The selection is made by the script and written t
 **Sanity criteria, fixed before running.**
 - Overfit 10 evenly spaced train frames with LoRA at 1e-4 (head 5e-5), no augmentation and no distillation: their AbsRel must be below 0.03 by step 300, and the step-0 and final overlays are viewed.
 - One LoRA epoch at 1e-4 with `lambda_d` 0.5: val AbsRel (all) must fall below the untrained model's val AbsRel, 0.1131 in `results/phase2/val`.
+
+## 2026-11-06: Phase 3 independent review and sanity checks
+
+**Independent review.** A fresh reviewer read the training code against this spec and reran the tests. It found no leakage and confirmed that preprocessing and validation match eval. Its real findings, all fixed with tests before the queue started:
+- A resume trusted any `last.pt` with the same run name. It now also requires the same fingerprint: config SHA-256, a hash of the training code files, the frame counts and the steps per epoch. Debug flags (`--limit-*`, `--epochs`) must write to separate roots.
+- A single NaN would have blocked the queue for good, because a deterministic resume replays it. It now ends that run (see Optimisation).
+- A crash between saving `best_val.pt` and `last.pt` could leave a best checkpoint that disagrees with the log. Now the best is written as `best_pending.pt`, then `last.pt` commits, then the pending file is renamed; resume promotes or discards it.
+- `log.csv` could end up one row short after a crash. It is now rewritten on resume and at the end.
+- A NaN val metric would have run all 20 epochs and then crashed.
+- The queue now resumes a failed run once by itself before stopping.
+- Smaller fixes: images with fewer than `eval.min_valid` LiDAR pixels are skipped in the loss as in eval; `run_name` refuses rates that would collide; `infer.py --name` can't overwrite another checkpoint's cache.
+
+The reviewer also noted that GPU training is not bit-deterministic (gradients differ by about 1e-4 between identical passes), so "a resumed run repeats an uninterrupted one" holds exactly only on CPU. On GPU it holds up to that noise.
+
+**Bug found by the overfit check: a detached scale made the depth collapse.** The first overfit run improved to AbsRel 0.07 by step 50, then diverged to NaN by step 100.
+- `scripts/diagnostics/overfit_diverge.py` logged the per-step evidence. The raw predicted depth shrank every step (median 1.06 to 1e-33) with or without the confidence term.
+- The cause: with s = median(g/d) detached, the gradient is not scale-invariant. The pixels predicted too far have larger d/g and so carry more weight than those predicted too near, which pushes the overall scale down every step with nothing to stop it.
+- With s kept in the graph, L(k·d) = L(d) exactly, so the gradient has no scale component. `test_lidar_gradient_has_no_component_along_scale` and its distillation twin check sum(grad·d) = 0, and both failed before the fix.
+- Rejected explanations: the confidence weights (removing them made it diverge faster), and step size or bf16 (the drift is systematic, not noise).
+- After the fix the depth scale stays between 0.96 and 1.67 over 150 steps.
+
+**The overfit check then failed its fixed bar.** The bar was AbsRel below 0.03 by step 300. The result was 0.049 (0.117 at step 0, a plateau of 0.045-0.05 from step 150). The bar was not changed after the fact.
+- Most of the gap comes from the loss form. Minimising c·e − λ·log c over c gives λ·log(e) plus a constant, so the confidence-weighted loss keeps shrinking already-small errors and does little for large ones. The confidence median rose to about 55.
+- With the confidence term off, the same setup reaches 0.027-0.034 (train-batch AbsRel). So the pipeline can fit, and 0.03 in 300 steps was a tight bar even for plain relative error.
+- The overlays (`results/overlays/phase3_overfit/`, git-ignored) pass. The prediction sits on the LiDAR rows, and the horizon and field band improve from step 0 to step 300. Bare trees stay wrong, as they are for the zero-shot model, because LiDAR passes through the branches.
+- An alternative was raised: train depth on plain relative error and the confidence head separately on the detached error. It was not adopted.
+
+**The queue runs the plan's confidence-weighted loss unchanged**, with the scale fix. It was committed at `32272ce` and started on 2026-11-08. The one-epoch sanity check was not run separately. Epoch 1 of the first S1 run plays its role, against the same bar of val AbsRel (all) below 0.1131.
+
+Consequence for the paper: the depth objective is effectively a log-error objective, while selection and reporting use AbsRel. Say so when describing the method.
 
 **Small supporting changes.**
 - `scripts/eval.py --out` writes elsewhere than `results/phase2/<split>`, so Phase 3 and 4 never overwrite the Phase 2 tables. No metric code changed.

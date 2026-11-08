@@ -14,7 +14,7 @@ This trains the Phase 3 models without any AI involved, then produces one short 
 
 That is 9 training runs. Each run trains for up to 20 epochs and stops early once validation AbsRel hasn't improved for 3 epochs. The script picks the winner of S1 and S2 by itself, using the rule fixed in DECISIONS.md, so you don't need to check in between stages.
 
-**Time:** TIME_PER_EPOCH per epoch, so about TIME_PER_RUN per run and roughly TOTAL_TIME for the whole queue. Runs that stop early are shorter.
+**Time:** an epoch's time wasn't measured before the hand-off. The first epoch line shows it (the last number, in seconds), and `time_s` in `results/phase3/runs/<run>/log.csv` keeps it. The estimate was 4-6 min per epoch, so up to about 2 h per run and 10-15 h for the queue. Runs that stop early are shorter.
 
 ## Before you start
 
